@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Anaconda
+conda-meta/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Data files — never commit raw CSVs
+data/
+
+# Generated output — reports and charts are build artefacts
+output/
+
+# Logs — append-only, not source code
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/

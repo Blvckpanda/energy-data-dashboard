@@ -1,0 +1,8 @@
+# Force LF line endings for all text files in the repo
+* text=auto eol=lf
+
+# Explicitly mark Python and Markdown files
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
