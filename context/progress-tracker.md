@@ -7,8 +7,8 @@
 | 1    | Scaffold + Config + CLI Shell | Complete    | Yes      |
 | 2    | Ingestion                     | Complete    | Yes      |
 | 3    | Cleaning + Quality Log        | Complete    | Yes      |
-| 4    | Analysis + Printed Preview    | Not started | —        |
-| 5    | Visualisation                 | Not started | —        |
+| 4    | Analysis + Printed Preview    | Complete    | Yes      |
+| 5    | Visualisation                 | In progress | —        |
 | 6    | Export                        | Not started | —        |
 | 7    | Batch Mode                    | Not started | —        |
 | 8    | Polish + Git                  | Not started | —        |
@@ -112,13 +112,13 @@ a 5-row terminal preview of each result key for immediate verification.
 
 **Done when:**
 
-- [ ] Terminal prints `[ANALYSE]` and a 5-row preview of all five result keys
-- [ ] `stats` contains mean, std, min, max for both `COL_ACTIVE_POWER` and `COL_WIND_SPEED`
-- [ ] `efficiency` contains no rows where `COL_THEORETICAL == 0` or `COL_ACTIVE_POWER <= 0`
-- [ ] Terminal prints the count of rows excluded from efficiency
-- [ ] `monthly` and `daily` are datetime-indexed with one row per period
-- [ ] `wind_bins` contains exactly 16 bins covering 0–360°
-- [ ] At least two values spot-checked manually against the raw CSV
+- [x] Terminal prints `[ANALYSE]` and a 5-row preview of all five result keys
+- [x] `stats` contains mean, std, min, max for both `COL_ACTIVE_POWER` and `COL_WIND_SPEED`
+- [x] `efficiency` contains no rows where `COL_THEORETICAL == 0` or `COL_ACTIVE_POWER <= 0`
+- [x] Terminal prints the count of rows excluded from efficiency
+- [x] `monthly` and `daily` are datetime-indexed with one row per period
+- [x] `wind_bins` contains exactly 16 bins covering 0–360°
+- [x] At least two values spot-checked manually against the raw CSV
 
 ---
 
@@ -240,6 +240,11 @@ Resolve or formally defer all remaining open questions in this file.
 | 2026-05-20 | `pd.read_csv()` called with no additional arguments in `load_csv()` | Spec explicitly prohibits date parsing or type coercion in `ingest.py` — those belong to `clean.py`. No encoding flag, no dtype hints. |
 | 2026-05-20 | `SystemExit` used for error propagation in `ingest.py` | Keeps error handling simple and consistent with `main.py`'s pattern: `SystemExit` passes through the top-level try/except, all other exceptions are caught and re-raised as clean messages. |
 | 2026-05-20 | Fallback uses `format='mixed'` instead of `infer_datetime_format=True` | `infer_datetime_format` is deprecated in pandas 2.3.3. The CSV has varying date string formats (some `%m %d %Y %H:%M`, some `%d %m %Y %H:%M`), so `format='mixed'` is the modern replacement that correctly handles non-uniform datetime strings. |
+| 2026-05-20 | `clean()` returns `(clean_df, run_id)` tuple | `run_id` is returned to `main.py` so `export.py` (Unit 6) can filter the quality log to the current run's entries when writing the Data Quality Log sheet. |
+| 2026-05-20 | `_append_log` uses `csv.DictWriter` with `mode="a"` | Stdlib `csv` module avoids adding a new dependency. `DictWriter` with `config.LOG_FIELDS` as `fieldnames` ensures columns are always written in the correct order. `mode="a"` guarantees append-only behaviour — header only written on first call when file doesn't exist. |
+| 2026-05-20 | Internal helpers use private `_` prefix naming | Convention distinguishes public API (`clean`) from internal helpers (`_remove_duplicates`, `_coerce_numeric`, `_handle_nulls`, `_parse_datetime`, `_append_log`) — only `clean()` is called by `main.py`. |
+| 2026-05-20 | `_compute_efficiency` is the only internal helper with a `print()` call | The efficiency exclusion count is defined in `code-standards.md` as required terminal output and is logically inseparable from the computation — no other internal helper prints anything. |
+| 2026-05-20 | `analyse.py` uses `pd.cut(bins=config.WIND_DIRECTION_BINS)` with `sort=False` | `value_counts(sort=False)` preserves natural bin order (0→360) essential for directional (non-ranked) wind data. |
 
 ---
 

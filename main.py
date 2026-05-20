@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import ingest
 import clean
+import analyse
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,6 +80,18 @@ def main() -> None:
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during cleaning: {e}")
+
+    # ── Unit 4: Analysis ─────────────────────────────────────────────
+    try:
+        results = analyse.analyse(clean_df)
+        print("[ANALYSE]")
+        for key, result_df in results.items():
+            print(f"\n--- {key} ({len(result_df)} rows) ---")
+            print(result_df.head())
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during analysis: {e}")
 
 
 if __name__ == "__main__":
