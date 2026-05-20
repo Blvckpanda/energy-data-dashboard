@@ -5,8 +5,8 @@
 | Unit | Name                          | Status      | Verified |
 | ---- | ----------------------------- | ----------- | -------- |
 | 1    | Scaffold + Config + CLI Shell | Complete    | Yes      |
-| 2    | Ingestion                     | Complete    | —        |
-| 3    | Cleaning + Quality Log        | Not started | —        |
+| 2    | Ingestion                     | Complete    | Yes      |
+| 3    | Cleaning + Quality Log        | Complete    | Yes      |
 | 4    | Analysis + Printed Preview    | Not started | —        |
 | 5    | Visualisation                 | Not started | —        |
 | 6    | Export                        | Not started | —        |
@@ -72,8 +72,7 @@ Implement `clean.py`. Execute steps in this exact order:
    - Primary: `pd.to_datetime(df[COL_DATETIME], format=config.DATE_FORMAT)`
      where `DATE_FORMAT = "%Y-%m-%d %H:%M:%S"`
    - Fallback: if primary parse raises an error, re-attempt with
-     `pd.to_datetime(df[COL_DATETIME], infer_datetime_format=True)`
-     and log a warning to the terminal:
+     `format='mixed'` and log a warning to the terminal:
      `[WARN] Date format inferred — verify output timestamps`
    - If both fail, raise a descriptive error and exit.
 6. Append all decisions to `logs/data_quality.log` as CSV rows with
@@ -83,12 +82,12 @@ Update `main.py` to call `clean.py` and print the `[CLEAN]` line.
 
 **Done when:**
 
-- [ ] Terminal prints: `[CLEAN] N rows in → M rows clean (K dropped)`
-- [ ] `logs/data_quality.log` contains correctly structured rows with `run_id`, `run_timestamp`, `column`, `issue_type`, `row_count`, `action_taken`
-- [ ] Running the script twice appends new entries — does not overwrite
-- [ ] Both runs are distinguishable by `run_id` and `run_timestamp`
-- [ ] `COL_DATETIME` column is dtype `datetime64` after cleaning
-- [ ] All four numeric columns are dtype `float64` after cleaning
+- [x] Terminal prints: `[CLEAN] N rows in → M rows clean (K dropped)`
+- [x] `logs/data_quality.log` contains correctly structured rows with `run_id`, `run_timestamp`, `column`, `issue_type`, `row_count`, `action_taken`
+- [x] Running the script twice appends new entries — does not overwrite
+- [x] Both runs are distinguishable by `run_id` and `run_timestamp`
+- [x] `COL_DATETIME` column is dtype `datetime64` after cleaning
+- [x] All four numeric columns are dtype `float64` after cleaning
 
 ---
 
@@ -235,9 +234,12 @@ Resolve or formally defer all remaining open questions in this file.
 | 2026-05-07 | openpyxl over xlsxwriter | Supports read + write; better image embedding for chart export |
 | 2026-05-07 | argparse over click | No extra dependency; sufficient for this scope |
 | 2026-05-07 | No database | Data volumes don't justify it; CSV-in, Excel-out is sufficient for v1 |
-| 2026-05-07 | `DATE_FORMAT = "%Y-%m-%d %H:%M:%S"` as primary; `infer_datetime_format=True` as fallback | Standard SCADA export format at 10-minute intervals; fallback handles edge cases; terminal warning issued if fallback fires |
+| 2026-05-07 | `DATE_FORMAT = "%Y-%m-%d %H:%M:%S"` as primary; `format='mixed'` as fallback | Standard SCADA export format at 10-minute intervals; fallback handles edge cases; terminal warning issued if fallback fires |
 | 2026-05-07 | Exclude `COL_THEORETICAL == 0` and `COL_ACTIVE_POWER <= 0` from efficiency | Industry KPI standard: efficiency metrics cover normal operational periods only; zero theoretical = non-operational interval; excluded count logged to terminal |
 | 2026-05-07 | Summary sheet includes a programmatic narrative paragraph | Non-technical readers need context; executive summary drives decisions; raw tables alone are insufficient; narrative generated from real computed values |
+| 2026-05-20 | `pd.read_csv()` called with no additional arguments in `load_csv()` | Spec explicitly prohibits date parsing or type coercion in `ingest.py` — those belong to `clean.py`. No encoding flag, no dtype hints. |
+| 2026-05-20 | `SystemExit` used for error propagation in `ingest.py` | Keeps error handling simple and consistent with `main.py`'s pattern: `SystemExit` passes through the top-level try/except, all other exceptions are caught and re-raised as clean messages. |
+| 2026-05-20 | Fallback uses `format='mixed'` instead of `infer_datetime_format=True` | `infer_datetime_format` is deprecated in pandas 2.3.3. The CSV has varying date string formats (some `%m %d %Y %H:%M`, some `%d %m %Y %H:%M`), so `format='mixed'` is the modern replacement that correctly handles non-uniform datetime strings. |
 
 ---
 
@@ -245,6 +247,6 @@ Resolve or formally defer all remaining open questions in this file.
 
 | # | Question | Raised | Resolved |
 | - | -------- | ------ | -------- |
-| 1 | What is the exact `Date/Time` format in the SCADA CSV? | 2026-05-07 | 2026-05-07 — Primary: `%Y-%m-%d %H:%M:%S`. Fallback: `infer_datetime_format=True`. Terminal warning issued if fallback fires. See Unit 3. |
+| 1 | What is the exact `Date/Time` format in the SCADA CSV? | 2026-05-07 | 2026-05-20 — The CSV contains mixed date formats. Primary: `%Y-%m-%d %H:%M:%S`. Fallback: `format='mixed'` (replaced deprecated `infer_datetime_format=True` for pandas 2.3.3 compatibility). Terminal warning issued if fallback fires. See Unit 3. |
 | 2 | Should efficiency exclude rows where `COL_THEORETICAL == 0`? | 2026-05-07 | 2026-05-07 — Yes. Exclude all rows where `COL_THEORETICAL == 0` OR `COL_ACTIVE_POWER <= 0`. Exclude entirely — do not fill. Log excluded count. See Unit 4. |
 | 3 | Should the Summary sheet include a written narrative paragraph? | 2026-05-07 | 2026-05-07 — Yes. 3–5 sentences, generated from real analysis values. Covers: operational hours, mean output, efficiency ratio, one notable pattern. Appears above the stats table. See Unit 6. |

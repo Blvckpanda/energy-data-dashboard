@@ -8,6 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 import ingest
+import clean
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,17 +58,27 @@ def main() -> None:
     """
     args = parse_args()
 
+    # ── Unit 2: Ingestion ─────────────────────────────────────────
     try:
-        # ── Unit 2: Ingestion ─────────────────────────────────────────
         raw_df = ingest.load_csv(args.file)
         ingest.validate_schema(raw_df)
         print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
-
-        # ── Units 3–8: stubs (to be replaced in subsequent units) ─────
     except SystemExit:
-        raise   # Let clean SystemExit messages through as-is
+        raise
     except Exception as e:
         sys.exit(f"Unexpected error during ingestion: {e}")
+
+    # ── Unit 3: Cleaning ─────────────────────────────────────────────
+    try:
+        rows_before = len(raw_df)
+        clean_df, run_id = clean.clean(raw_df)
+        rows_after = len(clean_df)
+        dropped = rows_before - rows_after
+        print(f"[CLEAN] {rows_before:,} rows in → {rows_after:,} rows clean ({dropped:,} dropped)")
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during cleaning: {e}")
 
 
 if __name__ == "__main__":
