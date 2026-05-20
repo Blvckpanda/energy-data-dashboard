@@ -10,6 +10,7 @@ from pathlib import Path
 import ingest
 import clean
 import analyse
+import visualise
 
 
 def parse_args() -> argparse.Namespace:
@@ -92,6 +93,17 @@ def main() -> None:
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during analysis: {e}")
+
+    # ── Unit 5: Visualisation ────────────────────────────────────────
+    try:
+        chart_paths = visualise.visualise(results)
+        print("[VISUALISE]")
+        for path in chart_paths:
+            print(f"  Chart saved → {path}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during visualisation: {e}")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
 | 2    | Ingestion                     | Complete    | Yes      |
 | 3    | Cleaning + Quality Log        | Complete    | Yes      |
 | 4    | Analysis + Printed Preview    | Complete    | Yes      |
-| 5    | Visualisation                 | In progress | —        |
+| 5    | Visualisation                 | Complete    | Yes      |
 | 6    | Export                        | Not started | —        |
 | 7    | Batch Mode                    | Not started | —        |
 | 8    | Polish + Git                  | Not started | —        |
@@ -137,12 +137,12 @@ and `seaborn` in this unit.
 
 **Done when:**
 
-- [ ] Three `.png` files exist in `output/charts/`
-- [ ] Each chart has labelled x-axis and y-axis with no raw column key names
-- [ ] Each chart title is a plain-English sentence
-- [ ] `wind_scatter.png` shows actual and theoretical as distinct series with a legend
-- [ ] Charts render correctly in an image viewer
-- [ ] Charts render correctly on a 500-row slice (tested with `head(500)`)
+- [x] Three `.png` files exist in `output/charts/` — non-zero file sizes
+- [x] Each chart has labelled x-axis and y-axis with no raw column key names
+- [x] Each chart title is a plain-English sentence
+- [x] `wind_scatter.png` shows actual and theoretical as distinct series with a legend
+- [x] Charts render correctly on full dataset (50,530 rows)
+- [x] Charts render correctly on a 500-row slice (tested with head(500))
 
 ---
 
@@ -242,9 +242,12 @@ Resolve or formally defer all remaining open questions in this file.
 | 2026-05-20 | Fallback uses `format='mixed'` instead of `infer_datetime_format=True` | `infer_datetime_format` is deprecated in pandas 2.3.3. The CSV has varying date string formats (some `%m %d %Y %H:%M`, some `%d %m %Y %H:%M`), so `format='mixed'` is the modern replacement that correctly handles non-uniform datetime strings. |
 | 2026-05-20 | `clean()` returns `(clean_df, run_id)` tuple | `run_id` is returned to `main.py` so `export.py` (Unit 6) can filter the quality log to the current run's entries when writing the Data Quality Log sheet. |
 | 2026-05-20 | `_append_log` uses `csv.DictWriter` with `mode="a"` | Stdlib `csv` module avoids adding a new dependency. `DictWriter` with `config.LOG_FIELDS` as `fieldnames` ensures columns are always written in the correct order. `mode="a"` guarantees append-only behaviour — header only written on first call when file doesn't exist. |
-| 2026-05-20 | Internal helpers use private `_` prefix naming | Convention distinguishes public API (`clean`) from internal helpers (`_remove_duplicates`, `_coerce_numeric`, `_handle_nulls`, `_parse_datetime`, `_append_log`) — only `clean()` is called by `main.py`. |
+| 2026-05-20 | Internal helpers use private `_` prefix naming | Convention distinguishes public API (`clean`) from internal helpers — only public functions called by `main.py`. |
 | 2026-05-20 | `_compute_efficiency` is the only internal helper with a `print()` call | The efficiency exclusion count is defined in `code-standards.md` as required terminal output and is logically inseparable from the computation — no other internal helper prints anything. |
 | 2026-05-20 | `analyse.py` uses `pd.cut(bins=config.WIND_DIRECTION_BINS)` with `sort=False` | `value_counts(sort=False)` preserves natural bin order (0→360) essential for directional (non-ranked) wind data. |
+| 2026-05-20 | `visualise.py` uses `matplotlib.use("Agg")` before importing pyplot | Non-interactive backend required for headless server compatibility and prevents pop-up chart windows during pipeline runs. |
+| 2026-05-20 | `plt.close(fig)` called after every `fig.savefig()` | Prevents memory accumulation — on a full 50,530-row dataset, unclosed figures silently consume hundreds of MB. |
+| 2026-05-20 | Scatter uses `alpha=0.15`, `s=3` for 50K-row efficiency dataset | Without low alpha and small point size, the scatter renders as a solid black mass. These values show the data density distribution clearly. |
 
 ---
 
