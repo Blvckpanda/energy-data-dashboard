@@ -5,7 +5,7 @@
 | Unit | Name                          | Status      | Verified |
 | ---- | ----------------------------- | ----------- | -------- |
 | 1    | Scaffold + Config + CLI Shell | Complete    | Yes      |
-| 2    | Ingestion                     | Not started | —        |
+| 2    | Ingestion                     | Complete    | —        |
 | 3    | Cleaning + Quality Log        | Not started | —        |
 | 4    | Analysis + Printed Preview    | Not started | —        |
 | 5    | Visualisation                 | Not started | —        |
@@ -14,6 +14,7 @@
 | 8    | Polish + Git                  | Not started | —        |
 
 ---
++-
 
 ## Unit Definitions
 
@@ -29,12 +30,12 @@ that prints received arguments.
 
 **Done when:**
 
-- [ ] `python main.py --help` prints all three flags with descriptions
-- [ ] `python main.py --file data/turbine.csv` prints the received path without crashing
-- [ ] All directories exist: `data/`, `output/`, `output/charts/`, `logs/`, `context/`
-- [ ] `config.py` defines all five `COL_*` constants, `DATE_FORMAT`, `LOG_FIELDS`, `OUTPUT_DIR`, `CHARTS_DIR`, `LOG_PATH`
-- [ ] No column name or path string appears anywhere except `config.py`
-- [ ] `requirements.txt` lists `pandas`, `matplotlib`, `seaborn`, `openpyxl` — not yet installed
+- [x] `python main.py --help` prints all three flags with descriptions
+- [x] `python main.py --file data/turbine.csv` prints the received path without crashing
+- [x] All directories exist: `data/`, `output/`, `output/charts/`, `logs/`, `c  ontext/`
+- [x] `config.py` defines all five `COL_*` constants, `DATE_FORMAT`, `LOG_FIELDS`, `OUTPUT_DIR`, `CHARTS_DIR`, `LOG_PATH`
+- [x] No column name or path string appears anywhere except `config.py`
+- [x] `requirements.txt` lists `pandas`, `matplotlib`, `seaborn`, `openpyxl` — not yet installed
 
 ---
 
@@ -47,11 +48,11 @@ missing columns on failure. Install `pandas` in this unit.
 
 **Done when:**
 
-- [ ] `python main.py --file data/turbine.csv` prints `[LOAD] N rows × 5 columns`
-- [ ] Script exits with a plain-English error — no traceback — when a required column is missing
-- [ ] Script exits with a plain-English error — no traceback — when the file path does not exist
-- [ ] `ingest.py` is importable with no side effects
-- [ ] All column references use `config.COL_*` constants — no raw strings
+- [x] `python main.py --file data/turbine.csv` prints `[LOAD] N rows × 5 columns`
+- [x] Script exits with a plain-English error — no traceback — when a required column is missing
+- [x] Script exits with a plain-English error — no traceback — when the file path does not exist
+- [x] `ingest.py` is importable with no side effects
+- [x] All column references use `config.COL_*` constants — no raw strings
 
 ---
 

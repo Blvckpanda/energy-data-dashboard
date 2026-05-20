@@ -13,7 +13,7 @@ COL_DATETIME       = "Date/Time"
 COL_ACTIVE_POWER   = "LV ActivePower (kW)"
 COL_WIND_SPEED     = "Wind Speed (m/s)"
 COL_THEORETICAL    = "Theoretical_Power_Curve (KWh)"
-COL_WIND_DIRECTION = "Wind Direction (degrees)"
+COL_WIND_DIRECTION = "Wind Direction (°)"
 
 # Columns where null rows are DROPPED (critical)
 CRITICAL_COLUMNS = [COL_DATETIME, COL_ACTIVE_POWER]

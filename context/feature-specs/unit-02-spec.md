@@ -1,4 +1,6 @@
-# Unit 02: Ingestion
+# Read 'CLAUDE.md' before starting
+
+## Unit 02: Ingestion
 
 ## Goal
 
@@ -12,31 +14,7 @@ to the terminal.
 
 ## Implementation
 
-### 1. Install pandas
-
-This is the first unit where `pandas` is needed. Install it now
-inside your active environment before writing any code:
-
-```bash
-pip install "pandas>=2.0,<3.0"
-```
-
-Confirm the install:
-
-```bash
-python -c "import pandas; print(pandas.__version__)"
-```
-
-Expected output: a version string starting with `2.` (e.g. `2.2.2`).
-
-> **⚠️ Human intervention required:**
-> You must run these commands manually in your terminal with
-> your virtual environment active. The agent cannot install
-> packages on your behalf.
-
----
-
-### 2. `ingest.py` — Structure
+### 1. `ingest.py` — Structure
 
 `ingest.py` owns exactly two responsibilities: loading the file
 and validating the schema. Nothing else. It does not clean, coerce,
@@ -75,7 +53,7 @@ def validate_schema(df: pd.DataFrame) -> None:
 
 ---
 
-### 3. `load_csv(file_path)`
+### 2. `load_csv(file_path)`
 
 Loads the CSV at `file_path` using `pd.read_csv()` and returns
 the raw DataFrame. Raises a descriptive error if the file does
@@ -107,7 +85,7 @@ not exist or cannot be read.
 
 ---
 
-### 4. `validate_schema(df)`
+### 3. `validate_schema(df)`
 
 Checks that the DataFrame contains all five required SCADA columns.
 Raises a descriptive error if any are missing.
@@ -155,7 +133,7 @@ Raises a descriptive error if any are missing.
 
 ---
 
-### 5. Update `main.py`
+### 4. Update `main.py`
 
 Replace the Unit 1 stub body in `main()` with real ingestion logic.
 `main.py` owns all terminal output — `ingest.py` functions return
@@ -196,7 +174,7 @@ The row count must use comma-separated thousands formatting
 
 ---
 
-### 6. Error handling boundary
+### 5. Error handling boundary
 
 All `SystemExit` calls raised inside `ingest.py` will naturally
 propagate up and exit with the provided message. However, `main.py`
@@ -218,42 +196,6 @@ except Exception as e:
 This pattern — `SystemExit` passes through, all other exceptions
 are caught and re-raised as clean messages — will be reused for
 every subsequent stage in `main.py`.
-
----
-
-## Dependencies
-
-- `pandas >= 2.0, < 3.0` — install now with
-  `pip install "pandas>=2.0,<3.0"`. First use in the pipeline.
-  All other packages (`matplotlib`, `seaborn`, `openpyxl`) remain
-  uninstalled until their respective units.
-
----
-
-## Human Intervention Points
-
-The following steps require action from you directly and cannot
-be performed by the agent:
-
-1. **Before the agent starts:** Confirm your virtual environment
-   is active (`which python` or `where python` should point inside
-   `.venv/` or your conda env — not the system Python).
-
-2. **Install pandas:** Run `pip install "pandas>=2.0,<3.0"` in
-   your terminal. Verify with `python -c "import pandas; print(pandas.__version__)"`.
-
-3. **Place the dataset:** The SCADA CSV file must exist at
-   `data/turbine.csv` (or any path you pass to `--file`) before
-   running verification. Download the Wind Turbine SCADA dataset
-   from Kaggle if you haven't already:
-   <https://www.kaggle.com/datasets/berkerisen/wind-turbine-scada-dataset>
-   Rename the file to `turbine.csv` and place it in the `data/`
-   folder.
-
-4. **Update progress-tracker.md:** Mark Unit 1 as `Complete` and
-   `Verified` in the Unit Status table if Gemini didn't already
-   do so, then mark Unit 2 as `In Progress` before prompting
-   the agent to begin.
 
 ---
 

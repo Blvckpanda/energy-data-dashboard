@@ -4,10 +4,10 @@ main.py
 Entry point and orchestrator for the Energy Operations Data Dashboard.
 Parses CLI arguments and calls pipeline modules in sequence.
 """
-
 import argparse
 import sys
 from pathlib import Path
+import ingest
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,15 +53,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """
     Orchestrate the full pipeline: parse args, then call each
-    module in sequence. In Unit 1 the pipeline body is a stub.
+    module in sequence.
     """
     args = parse_args()
 
-    # ── Stub: print received arguments and exit ───────────────────
-    # This block is replaced unit by unit as modules are implemented.
-    print(f"--file   : {args.file}")
-    print(f"--folder : {args.folder}")
-    print(f"--output : {args.output}")
+    try:
+        # ── Unit 2: Ingestion ─────────────────────────────────────────
+        raw_df = ingest.load_csv(args.file)
+        ingest.validate_schema(raw_df)
+        print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
+
+        # ── Units 3–8: stubs (to be replaced in subsequent units) ─────
+    except SystemExit:
+        raise   # Let clean SystemExit messages through as-is
+    except Exception as e:
+        sys.exit(f"Unexpected error during ingestion: {e}")
 
 
 if __name__ == "__main__":

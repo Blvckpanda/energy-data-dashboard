@@ -1,4 +1,4 @@
-# ## Energy Operations Data Dashboard — Agent Context
+# Energy Operations Data Dashboard — Agent Context
 
 Read the following files **in full and in this exact order**
 before implementing anything or making any architectural decision.
@@ -46,6 +46,7 @@ Do not begin writing code until all five files have been read.
   imports from pipeline modules.
 - No Python traceback may reach the user. All exceptions are caught
   in `main.py` and surfaced as plain-English messages.
+- When inspecting data files, only use head -n 5 data/turbine.csv or pandas.read_csv(nrows=5). Do not read the entire file into context.
 
 ---
 
