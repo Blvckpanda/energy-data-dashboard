@@ -10,7 +10,7 @@
 | 4    | Analysis + Printed Preview    | Complete    | Yes      |
 | 5    | Visualisation                 | Complete    | Yes      |
 | 6    | Export                        | Complete    | Yes      |
-| 7    | Batch Mode                    | Not started | —        |
+| 7    | Batch Mode                    | Complete    | Yes      |
 | 8    | Polish + Git                  | Not started | —        |
 
 ---

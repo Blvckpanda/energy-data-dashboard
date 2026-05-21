@@ -54,16 +54,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    """
-    Orchestrate the full pipeline: parse args, then call each
-    module in sequence.
-    """
-    args = parse_args()
+import pandas as pd
 
-    # ── Unit 2: Ingestion ─────────────────────────────────────────
+def run_single(file_path: Path, output_dir: Path) -> None:
+    """
+    Run the full pipeline on a single CSV file.
+
+    Stages: LOAD → CLEAN → ANALYSE → VISUALISE → EXPORT
+
+    Parameters:
+        file_path (Path): path to the SCADA CSV file to process
+        output_dir (Path): directory to write the report to
+
+    Returns:
+        None
+
+    Side effects:
+        - Appends entries to logs/data_quality.log
+        - Writes .png files to output/charts/
+        - Writes one .xlsx report to output_dir
+    """
+    # ── LOAD ──────────────────────────────────────────────────────
     try:
-        raw_df = ingest.load_csv(args.file)
+        raw_df = ingest.load_csv(file_path)
         ingest.validate_schema(raw_df)
         print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
     except SystemExit:
@@ -71,7 +84,7 @@ def main() -> None:
     except Exception as e:
         sys.exit(f"Unexpected error during ingestion: {e}")
 
-    # ── Unit 3: Cleaning ─────────────────────────────────────────────
+    # ── CLEAN ─────────────────────────────────────────────────────
     try:
         rows_before = len(raw_df)
         clean_df, run_id = clean.clean(raw_df)
@@ -83,7 +96,7 @@ def main() -> None:
     except Exception as e:
         sys.exit(f"Unexpected error during cleaning: {e}")
 
-    # ── Unit 4: Analysis ─────────────────────────────────────────────
+    # ── ANALYSE ───────────────────────────────────────────────────
     try:
         results = analyse.analyse(clean_df)
         print("[ANALYSE]")
@@ -95,7 +108,7 @@ def main() -> None:
     except Exception as e:
         sys.exit(f"Unexpected error during analysis: {e}")
 
-    # ── Unit 5: Visualisation ────────────────────────────────────────
+    # ── VISUALISE ─────────────────────────────────────────────────
     try:
         chart_paths = visualise.visualise(results)
         print("[VISUALISE]")
@@ -106,7 +119,7 @@ def main() -> None:
     except Exception as e:
         sys.exit(f"Unexpected error during visualisation: {e}")
 
-    # ── Unit 6: Export ────────────────────────────────────────────────
+    # ── EXPORT ────────────────────────────────────────────────────
     try:
         print("[EXPORT]")
         report_path = export.export(
@@ -114,13 +127,155 @@ def main() -> None:
             results=results,
             chart_paths=chart_paths,
             run_id=run_id,
-            output_dir=args.output,
+            output_dir=output_dir,
         )
         print(f"Report saved → {report_path}")
     except SystemExit:
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during export: {e}")
+
+
+def run_batch(folder_path: Path, output_dir: Path) -> None:
+    """
+    Run the pipeline on all .csv files in a folder.
+
+    Processes each CSV through ingest and clean independently.
+    Concatenates clean DataFrames with a source_file column.
+    Produces one consolidated report from the combined data.
+
+    Files that fail ingestion or cleaning are skipped with a
+    plain-English warning. Processing continues for remaining files.
+
+    Parameters:
+        folder_path (Path): directory containing SCADA CSV files
+        output_dir (Path): directory to write the consolidated report to
+
+    Returns:
+        None
+
+    Side effects:
+        - Appends entries to logs/data_quality.log (one set per file)
+        - Writes .png files to output/charts/
+        - Writes one consolidated .xlsx report to output_dir
+    """
+    if not folder_path.exists():
+        sys.exit(f"Error: Folder not found — {folder_path}")
+
+    csv_files = sorted(folder_path.glob("*.csv"))
+
+    if not csv_files:
+        sys.exit(f"Error: No .csv files found in {folder_path}")
+
+    print(f"[BATCH] Found {len(csv_files)} CSV file(s) in {folder_path}")
+
+    cleaned_frames: list[pd.DataFrame] = []
+    last_run_id: str = ""
+
+    for csv_path in csv_files:
+        print(f"\n[BATCH] Processing: {csv_path.name}")
+
+        # ── LOAD (per file) ───────────────────────────────────────
+        try:
+            raw_df = ingest.load_csv(csv_path)
+            ingest.validate_schema(raw_df)
+            print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
+        except SystemExit as e:
+            print(f"[SKIP] {csv_path.name} — {e}")
+            continue
+        except Exception as e:
+            print(f"[SKIP] {csv_path.name} — Unexpected error during ingestion: {e}")
+            continue
+
+        # ── CLEAN (per file) ──────────────────────────────────────
+        try:
+            rows_before = len(raw_df)
+            clean_df, run_id = clean.clean(raw_df)
+            rows_after = len(clean_df)
+            dropped = rows_before - rows_after
+            print(f"[CLEAN] {rows_before:,} rows in → {rows_after:,} rows clean ({dropped:,} dropped)")
+            last_run_id = run_id
+        except SystemExit as e:
+            print(f"[SKIP] {csv_path.name} — {e}")
+            continue
+        except Exception as e:
+            print(f"[SKIP] {csv_path.name} — Unexpected error during cleaning: {e}")
+            continue
+
+        # Add source_file column before collecting
+        clean_df = clean_df.copy()
+        clean_df.insert(0, "source_file", csv_path.name)
+        cleaned_frames.append(clean_df)
+
+    # ── Guard: nothing survived cleaning ─────────────────────────
+    if not cleaned_frames:
+        sys.exit(
+            "Error: No files were successfully processed. "
+            "Check the [SKIP] messages above for details."
+        )
+
+    # ── Concatenate all cleaned frames ────────────────────────────
+    print(f"\n[BATCH] Concatenating {len(cleaned_frames)} cleaned file(s)...")
+    consolidated_df = pd.concat(cleaned_frames, ignore_index=True)
+    print(f"[BATCH] Consolidated: {len(consolidated_df):,} total rows")
+
+    # ── ANALYSE (on consolidated data) ───────────────────────────
+    try:
+        results = analyse.analyse(consolidated_df)
+        print("[ANALYSE]")
+        for key, result_df in results.items():
+            print(f"\n--- {key} ({len(result_df)} rows) ---")
+            print(result_df.head())
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during analysis: {e}")
+
+    # ── VISUALISE (on consolidated data) ─────────────────────────
+    try:
+        chart_paths = visualise.visualise(results)
+        print("[VISUALISE]")
+        for path in chart_paths:
+            print(f"  Chart saved → {path}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during visualisation: {e}")
+
+    # ── EXPORT (consolidated report) ──────────────────────────────
+    try:
+        print("[EXPORT]")
+        report_path = export.export(
+            clean_df=consolidated_df,
+            results=results,
+            chart_paths=chart_paths,
+            run_id=last_run_id,
+            output_dir=output_dir,
+        )
+        print(f"Report saved → {report_path}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during export: {e}")
+
+
+def main() -> None:
+    """
+    Orchestrate the pipeline. Dispatches to run_single() or
+    run_batch() based on which flag was provided.
+    """
+    args = parse_args()
+
+    if args.file and args.folder:
+        sys.exit("Error: Provide either --file or --folder, not both.")
+
+    if not args.file and not args.folder:
+        sys.exit("Error: You must provide either --file or --folder.")
+
+    if args.file:
+        run_single(args.file, args.output)
+    else:
+        run_batch(args.folder, args.output)
 
 
 if __name__ == "__main__":
