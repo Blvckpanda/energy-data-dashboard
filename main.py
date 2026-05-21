@@ -11,6 +11,7 @@ import ingest
 import clean
 import analyse
 import visualise
+import export
 
 
 def parse_args() -> argparse.Namespace:
@@ -104,6 +105,22 @@ def main() -> None:
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during visualisation: {e}")
+
+    # ── Unit 6: Export ────────────────────────────────────────────────
+    try:
+        print("[EXPORT]")
+        report_path = export.export(
+            clean_df=clean_df,
+            results=results,
+            chart_paths=chart_paths,
+            run_id=run_id,
+            output_dir=args.output,
+        )
+        print(f"Report saved → {report_path}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"Unexpected error during export: {e}")
 
 
 if __name__ == "__main__":

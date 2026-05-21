@@ -9,7 +9,7 @@
 | 3    | Cleaning + Quality Log        | Complete    | Yes      |
 | 4    | Analysis + Printed Preview    | Complete    | Yes      |
 | 5    | Visualisation                 | Complete    | Yes      |
-| 6    | Export                        | Not started | —        |
+| 6    | Export                        | Complete    | Yes      |
 | 7    | Batch Mode                    | Not started | —        |
 | 8    | Polish + Git                  | Not started | —        |
 
@@ -174,14 +174,14 @@ this unit.
 
 **Done when:**
 
-- [ ] `output/report_YYYY-MM-DD.xlsx` created with today's date in filename
-- [ ] Workbook opens in Excel with all six sheets in correct order
-- [ ] Summary sheet contains narrative paragraph above the statistics table
-- [ ] Narrative references real computed values — not placeholder text
-- [ ] No raw `COL_*` key names or Python variable names visible anywhere in the workbook
-- [ ] Charts sheet shows all three embedded images (not linked)
-- [ ] Data Quality Log sheet shows only entries from the current run
-- [ ] Running the script twice produces two separate timestamped files
+- [x] `output/report_YYYY-MM-DD.xlsx` created with today's date in filename
+- [x] Workbook opens in Excel with all six sheets in correct order
+- [x] Summary sheet contains narrative paragraph above the statistics table
+- [x] Narrative references real computed values — not placeholder text
+- [x] No raw `COL_*` key names or Python variable names visible anywhere in the workbook
+- [x] Charts sheet shows all three embedded images (not linked)
+- [x] Data Quality Log sheet shows only entries from the current run
+- [x] Running the script twice produces two separate timestamped files
 
 ---
 
