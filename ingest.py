@@ -2,8 +2,9 @@
 ingest.py
 
 Owns CSV loading and schema validation.
-Checks that all required SCADA columns are present before
-returning a raw DataFrame. Does not clean or transform data.
+Checks that all required SCADA columns for the active schema are
+present before returning a raw DataFrame. Does not clean or transform
+data.
 """
 
 import pandas as pd
@@ -35,15 +36,19 @@ def load_csv(file_path: Path) -> pd.DataFrame:
         raise SystemExit(f"Error: Could not read file — {file_path}\nReason: {e}")
 
 
-def validate_schema(df: pd.DataFrame) -> None:
+def validate_schema(df: pd.DataFrame, schema: str) -> None:
     """
-    Validate that the DataFrame contains all five required SCADA columns.
+    Validate that the DataFrame contains all required columns for the
+    given schema.
 
-    Compares the DataFrame columns against the config.COL_* constants.
-    Does not check column order or dtypes — those belong to clean.py.
+    Compares the DataFrame columns against the column list from
+    config.SCHEMA_REGISTRY for the active schema. Does not check
+    column order or dtypes — those belong to clean.py.
 
     Parameters:
         df (pd.DataFrame): Raw DataFrame to validate.
+        schema (str): "wind" or "solar" — selects the required column
+                      list from config.SCHEMA_REGISTRY.
 
     Returns:
         None: If all required columns are present.
@@ -52,21 +57,14 @@ def validate_schema(df: pd.DataFrame) -> None:
         SystemExit: With a plain-English message listing the missing
                     and expected columns.
     """
-    REQUIRED_COLUMNS = [
-        config.COL_DATETIME,
-        config.COL_ACTIVE_POWER,
-        config.COL_WIND_SPEED,
-        config.COL_THEORETICAL,
-        config.COL_WIND_DIRECTION,
-    ]
+    required = config.SCHEMA_REGISTRY[schema]["required_columns"]
+    missing = [col for col in required if col not in df.columns]
 
-    missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-
-    if not missing_columns:
+    if not missing:
         return
 
     raise SystemExit(
-        f"Error: Schema validation failed.\n"
-        f"Missing columns: {missing_columns}\n"
-        f"Expected columns: {REQUIRED_COLUMNS}"
+        f"Error: Schema validation failed for '{schema}' schema.\n"
+        f"Missing columns: {missing}\n"
+        f"Expected columns: {required}"
     )

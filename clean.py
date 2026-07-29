@@ -5,6 +5,9 @@ Owns data cleaning and quality logging.
 Accepts a raw DataFrame from ingest.py, applies cleaning steps
 in a defined sequence, and returns a clean DataFrame.
 
+Schema-aware: reads critical_columns, median_fill_columns,
+datetime_col, and date_format from config.SCHEMA_REGISTRY.
+
 Side effect: appends structured CSV rows to logs/data_quality.log
 after every run. This file is append-only and never truncated.
 """
@@ -18,7 +21,7 @@ import pandas as pd
 import config
 
 
-def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+def clean(df: pd.DataFrame, schema: str) -> tuple[pd.DataFrame, str]:
     """
     Run the full cleaning pipeline on a raw SCADA DataFrame.
 
@@ -31,6 +34,8 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     Parameters:
         df (pd.DataFrame): raw DataFrame from ingest.load_csv(),
                            schema already validated by ingest.validate_schema()
+        schema (str): "wind" or "solar" — selects column config from
+                      config.SCHEMA_REGISTRY
 
     Returns:
         tuple[pd.DataFrame, str]:
@@ -40,17 +45,18 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
               main.py to filter the quality log for the current run
 
     Assumptions:
-        - All five SCADA columns are present (validated upstream)
+        - All required columns for the schema are present (validated upstream)
         - Input DataFrame is not modified in place — a copy is made
     """
+    cfg = config.SCHEMA_REGISTRY[schema]
     run_id = str(uuid.uuid4())
     run_timestamp = datetime.now(timezone.utc).isoformat()
 
     df = df.copy()
     df = _remove_duplicates(df, run_id, run_timestamp)
-    df = _coerce_numeric(df, run_id, run_timestamp)
-    df = _handle_nulls(df, run_id, run_timestamp)
-    df = _parse_datetime(df, run_id, run_timestamp)
+    df = _coerce_numeric(df, cfg, run_id, run_timestamp)
+    df = _handle_nulls(df, cfg, run_id, run_timestamp)
+    df = _parse_datetime(df, cfg, run_id, run_timestamp)
 
     return df, run_id
 
@@ -95,17 +101,19 @@ def _remove_duplicates(
 
 
 def _coerce_numeric(
-    df: pd.DataFrame, run_id: str, run_timestamp: str
+    df: pd.DataFrame, cfg: dict, run_id: str, run_timestamp: str
 ) -> pd.DataFrame:
     """
-    Coerce all four numeric SCADA columns to float64.
+    Coerce numeric columns to float64.
 
-    Non-numeric values (strings, symbols) become NaN via
-    pd.to_numeric(errors='coerce'). NaN values are addressed
-    in the subsequent _handle_nulls step.
+    Iterates all columns in critical_columns + median_fill_columns
+    minus the datetime column. Non-numeric values become NaN via
+    pd.to_numeric(errors='coerce'). NaN values are addressed in the
+    subsequent _handle_nulls step.
 
     Parameters:
         df (pd.DataFrame): DataFrame with raw column types
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
         run_id (str): UUID for this run
         run_timestamp (str): ISO 8601 run start time
 
@@ -113,15 +121,15 @@ def _coerce_numeric(
         pd.DataFrame: DataFrame with numeric columns cast to float64
 
     Assumptions:
-        - COL_DATETIME is not touched by this function
+        - datetime_col is not touched by this function
         - Columns are already present (validated by ingest)
     """
-    numeric_cols = [
-        config.COL_ACTIVE_POWER,
-        config.COL_WIND_SPEED,
-        config.COL_THEORETICAL,
-        config.COL_WIND_DIRECTION,
-    ]
+    datetime_col = cfg["datetime_col"]
+    numeric_cols = []
+    for col in cfg["critical_columns"] + cfg["median_fill_columns"]:
+        if col != datetime_col:
+            numeric_cols.append(col)
+
     log_entries = []
 
     for col in numeric_cols:
@@ -144,22 +152,17 @@ def _coerce_numeric(
 
 
 def _handle_nulls(
-    df: pd.DataFrame, run_id: str, run_timestamp: str
+    df: pd.DataFrame, cfg: dict, run_id: str, run_timestamp: str
 ) -> pd.DataFrame:
     """
     Handle null values using column-specific strategies.
 
-    Critical columns (COL_DATETIME, COL_ACTIVE_POWER):
-        Rows with nulls are dropped entirely.
-
-    Non-critical columns (COL_WIND_SPEED, COL_THEORETICAL,
-    COL_WIND_DIRECTION):
-        Nulls are filled with the column median. Median is
-        computed BEFORE any filling so it reflects the true
-        distribution of real values.
+    Critical columns: rows with nulls are dropped entirely.
+    Non-critical columns: nulls are filled with the column median.
 
     Parameters:
         df (pd.DataFrame): DataFrame after numeric coercion
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
         run_id (str): UUID for this run
         run_timestamp (str): ISO 8601 run start time
 
@@ -174,7 +177,7 @@ def _handle_nulls(
     log_entries = []
 
     # Critical columns — drop rows with nulls
-    for col in config.CRITICAL_COLUMNS:
+    for col in cfg["critical_columns"]:
         null_count = int(df[col].isna().sum())
         if null_count > 0:
             df = df.dropna(subset=[col])
@@ -188,7 +191,7 @@ def _handle_nulls(
         })
 
     # Non-critical columns — fill nulls with column median
-    for col in config.MEDIAN_FILL_COLUMNS:
+    for col in cfg["median_fill_columns"]:
         null_count = int(df[col].isna().sum())
         if null_count > 0:
             median_val = df[col].median()
@@ -207,10 +210,10 @@ def _handle_nulls(
 
 
 def _parse_datetime(
-    df: pd.DataFrame, run_id: str, run_timestamp: str
+    df: pd.DataFrame, cfg: dict, run_id: str, run_timestamp: str
 ) -> pd.DataFrame:
     """
-    Parse COL_DATETIME to datetime64 dtype.
+    Parse the datetime column to datetime64 dtype.
 
     Strategy:
       1. Primary: pd.to_datetime(format=config.DATE_FORMAT)
@@ -219,33 +222,36 @@ def _parse_datetime(
       3. If both fail: raises SystemExit with a plain-English message
 
     Parameters:
-        df (pd.DataFrame): DataFrame with COL_DATETIME as a string column
+        df (pd.DataFrame): DataFrame with datetime column as a string column
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
         run_id (str): UUID for this run
         run_timestamp (str): ISO 8601 run start time
 
     Returns:
-        pd.DataFrame: DataFrame with COL_DATETIME as datetime64
+        pd.DataFrame: DataFrame with datetime column as datetime64
 
     Assumptions:
-        - Null rows in COL_DATETIME have already been dropped
+        - Null rows in the datetime column have already been dropped
     """
+    datetime_col = cfg["datetime_col"]
+    date_format = cfg["date_format"]
     inferred = False
 
     try:
-        df[config.COL_DATETIME] = pd.to_datetime(
-            df[config.COL_DATETIME], format=config.DATE_FORMAT
+        df[datetime_col] = pd.to_datetime(
+            df[datetime_col], format=date_format
         )
     except (ValueError, TypeError):
         try:
             print("[WARN] Date format inferred — verify output timestamps")
-            df[config.COL_DATETIME] = pd.to_datetime(
-                df[config.COL_DATETIME], format="mixed"
+            df[datetime_col] = pd.to_datetime(
+                df[datetime_col], format="mixed"
             )
             inferred = True
         except Exception as e:
             raise SystemExit(
-                f"Error: Could not parse date column '{config.COL_DATETIME}'.\n"
-                f"Primary format '{config.DATE_FORMAT}' failed.\n"
+                f"Error: Could not parse date column '{datetime_col}'.\n"
+                f"Primary format '{date_format}' failed.\n"
                 f"Inference also failed: {e}"
             )
 
@@ -254,7 +260,7 @@ def _parse_datetime(
         {
             config.LOG_FIELD_RUN_ID:       run_id,
             config.LOG_FIELD_TIMESTAMP:    run_timestamp,
-            config.LOG_FIELD_COLUMN:       config.COL_DATETIME,
+            config.LOG_FIELD_COLUMN:       datetime_col,
             config.LOG_FIELD_ISSUE_TYPE:   issue_type,
             config.LOG_FIELD_ROW_COUNT:    0,
             config.LOG_FIELD_ACTION_TAKEN: "coerced",

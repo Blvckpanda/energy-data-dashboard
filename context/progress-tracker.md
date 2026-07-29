@@ -12,6 +12,9 @@
 | 6    | Export                        | Complete    | Yes      |
 | 7    | Batch Mode                    | Complete    | Yes      |
 | 8    | Polish + Git                  | Complete    | Yes      |
+| 9    | Solar Schema + --schema flag  | Complete    | Yes     |
+| 10   | Anomaly Detection             | Complete    | Yes     |
+| 11   | HTML Report                   | Complete    | Yes     |
 
 ---
 +-
@@ -223,6 +226,91 @@ Resolve or formally defer all remaining open questions in this file.
 
 ---
 
+### Unit 9 — Solar Schema + `--schema` flag
+
+Add a `--schema` flag to `main.py` (values: `wind`, `solar`). Add solar
+column constants (`COL_SOLAR_DATETIME`, `COL_PLANT_ID`, `COL_SOURCE_KEY`,
+`COL_DC_POWER`, `COL_AC_POWER`, `COL_DAILY_YIELD`, `COL_TOTAL_YIELD`) and a
+schema registry dict in `config.py`. Update `ingest.validate_schema()` to
+accept a schema name and validate against the correct column list. Add
+schema-specific analysis in `analyse.py`: DC-to-AC conversion efficiency
+ratio (`AC_POWER / DC_POWER`), daily yield trend, plant/source comparison
+by `SOURCE_KEY` grouping.
+
+**Done when:**
+
+- [ ] `python main.py --file data/turbine.csv --schema wind` produces the same
+      output as before (backward compatible)
+- [ ] `python main.py --file data/solar.csv --schema solar` loads, cleans,
+      analyses, and exports a valid report
+- [ ] `config.py` contains all seven solar column constants plus a schema
+      registry mapping `"wind"` and `"solar"` to their column sets
+- [ ] `ingest.validate_schema()` validates against the correct column list for
+      each schema
+- [ ] `analyse.py` computes DC-to-AC conversion efficiency for solar rows
+- [ ] No wind column constant is referenced during a solar run and vice versa
+- [ ] Terminal prints `--schema` in the help text
+
+---
+
+### Unit 10 — Anomaly Detection
+
+New module: `detect.py` — owned by a new module, called between `analyse.py`
+and `visualise.py`. Two phases:
+
+1. **Statistical threshold** — flag rows where active power deviates more than
+   `ANOMALY_STD_THRESHOLD` (2.0) standard deviations from the column mean.
+   Schema-aware: uses the correct power column for the active schema.
+2. **Rolling window** — flag sustained underperformance: rows where a
+   36-interval (6-hour) rolling mean falls more than `ANOMALY_ROLLING_DROP_PCT`
+   (20%) below the overall operational mean. Window size from
+   `ANOMALY_ROLLING_WINDOW` (36).
+
+Returns an `anomalies` DataFrame added to the results dict. `visualise.py`
+gets a new chart: timeline with anomalous periods highlighted in red.
+`export.py` gets a new seventh sheet: Anomaly Report listing flagged periods
+with timestamps, deviation magnitude, and detection method. Terminal output:
+`[DETECT] N anomalies flagged (M threshold, K rolling window)`.
+
+**Done when:**
+
+- [ ] `python main.py --file data/turbine.csv` prints `[DETECT] N anomalies flagged`
+- [ ] `output/charts/anomaly_timeline.png` exists and shows red-highlighted anomalies
+- [ ] Excel report contains a seventh sheet "Anomaly Report" with per-anomaly details
+- [ ] Detection is schema-aware — running with `--schema wind` and `--schema solar`
+      uses the correct power column for each
+- [ ] Anomaly thresholds come from `config.py` — not hardcoded in `detect.py`
+- [ ] All three config constants (`ANOMALY_STD_THRESHOLD`, `ANOMALY_ROLLING_WINDOW`,
+      `ANOMALY_ROLLING_DROP_PCT`) are present in `config.py`
+
+---
+
+### Unit 11 — HTML Report
+
+New module: `html_export.py` — generates a self-contained single-file HTML
+report. All charts embedded as base64 `<img>` tags — no external file
+dependencies, fully shareable as one file. Sections mirror the Excel report:
+narrative summary, statistics table, three charts, anomaly highlights, data
+quality note. Styled for GitHub Pages deployment — drop
+`output/report_YYYY-MM-DD.html` into a `docs/` folder and enable Pages in
+repo settings. `main.py` gets a `--format` flag: `--format excel` (default),
+`--format html`, `--format both`.
+
+**Done when:**
+
+- [ ] `python main.py --file data/turbine.csv --format html` produces
+      `output/report_YYYY-MM-DD.html`
+- [ ] `python main.py --file data/turbine.csv --format both` produces both
+      `.xlsx` and `.html` files
+- [ ] HTML file opens in a browser with all content visible — no broken images
+- [ ] Charts are embedded as base64 — no external image file dependencies
+- [ ] HTML file sections: narrative summary, statistics table, three charts,
+      anomaly highlights, data quality note
+- [ ] HTML file is less than 5 MB (charts are the only large component)
+- [ ] `--format` appears in `python main.py --help` output
+
+---
+
 ## Decisions Log
 
 | Date       | Decision | Rationale |
@@ -248,6 +336,20 @@ Resolve or formally defer all remaining open questions in this file.
 | 2026-05-20 | `visualise.py` uses `matplotlib.use("Agg")` before importing pyplot | Non-interactive backend required for headless server compatibility and prevents pop-up chart windows during pipeline runs. |
 | 2026-05-20 | `plt.close(fig)` called after every `fig.savefig()` | Prevents memory accumulation — on a full 50,530-row dataset, unclosed figures silently consume hundreds of MB. |
 | 2026-05-20 | Scatter uses `alpha=0.15`, `s=3` for 50K-row efficiency dataset | Without low alpha and small point size, the scatter renders as a solid black mass. These values show the data density distribution clearly. |
+| 2026-07-29 | `--schema` flag over separate entry points | Schema-agnostic design; one pipeline, one entry point; extensible to future schemas without code duplication |
+| 2026-07-29 | Anomaly thresholds in config.py not CLI flags | Consistent with existing invariant that all thresholds live in config.py; tunable without adding CLI complexity |
+| 2026-07-29 | HTML report is self-contained single file | Base64-embedded charts make it shareable without dependencies; deployable to GitHub Pages |
+| 2026-07-29 | SCHEMA_REGISTRY dict over per-schema conditionals | One dict in config.py tells every module which columns, thresholds, and labels apply; adding hydro costs ~config.py+data, zero forking |
+| 2026-07-29 | "Power Curve Analysis" sheet renamed to "Efficiency Analysis" | Schema-neutral name works for both wind (efficiency ratio) and solar (conversion ratio) |
+| 2026-07-29 | `wind_bins` result key renamed to `distribution` | Generic key for both wind direction bins and solar source-key aggregation |
+| 2026-07-29 | Solar scatter uses ideal 1:1 line instead of theoretical curve | Unlike wind's power curve, there's no theoretical reference — ideal conversion (y=x) is the correct baseline |
+| 2026-07-29 | Deduplicate columns in efficiency result when secondary_col == reference_col | Solar's DC_POWER serves as both secondary and reference column; duplicate column selection breaks visualise.py |
+| 2026-07-29 | detect.py uses `isin()` for anomaly_type classification, not `str.contains()` | `str.contains('threshold')` misses `'both'` type; `isin()` correctly catches all threshold-flagged rows |
+| 2026-07-29 | `[DETECT]` line prints after `[ANALYSE]`, before `[VISUALISE]` | Results key `anomalies` must be in the dict before visualise.py reads it for the 4th chart |
+| 2026-07-29 | Narrative logic extracted to `narrative.py`, shared by both exporters | Single source of truth; html_export.py and export.py both call `narrative.build_narrative()` with no duplication |
+| 2026-07-29 | HTML report is self-contained single file with base64-embedded charts | Opens offline with no internet connection; deployable to GitHub Pages as a single artifact |
+| 2026-07-29 | `--format` flag over separate subcommands | Consistent with `--schema` pattern; `main.py` stays one entry point, no new CLI subparser needed |
+| 2026-07-29 | html_export.py uses plain-English label lookup, not raw config names | "Mean Efficiency" instead of "Mean efficiency_ratio" in the HTML stats table |
 
 ---
 
