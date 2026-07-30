@@ -15,6 +15,7 @@
 | 9    | Solar Schema + --schema flag  | Complete    | Yes     |
 | 10   | Anomaly Detection             | Complete    | Yes     |
 | 11   | HTML Report                   | Complete    | Yes     |
+| 12   | Test Suite                    | Complete    | Yes     |
 
 ---
 +-
@@ -350,6 +351,8 @@ repo settings. `main.py` gets a `--format` flag: `--format excel` (default),
 | 2026-07-29 | HTML report is self-contained single file with base64-embedded charts | Opens offline with no internet connection; deployable to GitHub Pages as a single artifact |
 | 2026-07-29 | `--format` flag over separate subcommands | Consistent with `--schema` pattern; `main.py` stays one entry point, no new CLI subparser needed |
 | 2026-07-29 | html_export.py uses plain-English label lookup, not raw config names | "Mean Efficiency" instead of "Mean efficiency_ratio" in the HTML stats table |
+| 2026-07-29 | Test suite uses fully synthetic DataFrames — no real datasets required | Tests run in any environment, including CI, without Kaggle CSVs being present |
+| 2026-07-29 | e2e smoke test monkeypatches config.CHARTS_DIR + config.LOG_PATH for isolation | Ensures charts and logs go to tmp_path, not real project directories |
 
 ---
 

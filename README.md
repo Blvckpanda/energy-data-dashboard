@@ -6,37 +6,41 @@
 ![openpyxl](https://img.shields.io/badge/openpyxl-3.x-217346?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
 
-A command-line Python pipeline that ingests Wind Turbine SCADA data
-from CSV files, cleans and validates it, runs structured analysis, and
-exports a six-sheet Excel report with embedded charts and plain-English
-summaries — with zero manual steps in between. The pipeline computes
-power curve efficiency against theoretical benchmarks, generates
-time-series and wind distribution visualisations, and maintains an
-append-only audit log keyed by run ID across every execution, directly
-mirroring data workflows used in real energy operations. Built as a
-self-directed portfolio project to demonstrate practical ETL, data
-cleaning, analysis, and reporting skills using industry-standard Python
-tooling.
+A schema-agnostic Python pipeline that ingests operational SCADA data
+from CSV files — Wind Turbine or Solar Power Generation — cleans and
+validates it, runs structured analysis including anomaly detection,
+and exports a multi-sheet Excel report and a self-contained shareable
+HTML report, both with embedded charts and plain-English summaries.
+The pipeline computes efficiency against reference benchmarks,
+generates time-series and distribution visualisations, flags
+anomalous readings using statistical and rolling-window methods, and
+maintains an append-only audit log keyed by run ID across every
+execution — directly mirroring data workflows used in real energy
+operations. Built as a self-directed portfolio project to demonstrate
+practical ETL, data cleaning, analysis, and reporting skills using
+industry-standard Python tooling.
 
 ---
 
 ## Output Preview
 
-[Summary Sheet](docs/screenshots/summary_sheet.png) 
-[Sample Chart](docs/screenshots/chart_sample.png) 
-[Terminal Output](docs/screenshots/terminal_output.png) 
+![Summary Sheet](docs/screenshots/summary_sheet.png)
+![Sample Chart](docs/screenshots/chart_sample.png)
+![Terminal Output](docs/screenshots/terminal_output.png)
 
 ---
 
 ## Stack
 
-| Layer        | Technology           | Role                                         |
-| ------------ | -------------------- | -------------------------------------------- |
-| Language     | Python 3.10+         | Runtime, orchestration, all pipeline logic   |
-| Data         | Pandas 2.x           | Loading, cleaning, grouping, aggregation     |
-| Charting     | Matplotlib + Seaborn | Figure generation and `.png` export          |
-| Excel export | openpyxl 3.x         | Workbook assembly, sheet writing, image embed|
-| CLI          | argparse (stdlib)    | Argument parsing — no extra dependency       |
+| Layer        | Technology            | Role                                          |
+| ------------ | ---------------------- | --------------------------------------------- |
+| Language     | Python 3.10+           | Runtime, orchestration, all pipeline logic    |
+| Data         | Pandas 2.x              | Loading, cleaning, grouping, aggregation      |
+| Charting     | Matplotlib + Seaborn   | Figure generation and `.png` export           |
+| Excel export | openpyxl 3.x            | Workbook assembly, sheet writing, image embed |
+| HTML export  | base64 (stdlib)         | Self-contained single-file report generation  |
+| Testing      | pytest                  | Automated regression coverage                 |
+| CLI          | argparse (stdlib)      | Argument parsing — no extra dependency        |
 
 ---
 
@@ -45,8 +49,8 @@ tooling.
 **1. Clone the repo**
 
 ```bash
-git clone https://github.com/Blvckpanda/energy-dashboard.git
-cd energy-dashboard
+git clone https://github.com/Blvckpanda/energy-data-dashboard.git
+cd energy-data-dashboard
 ```
 
 **2. Create and activate a virtual environment**
@@ -70,8 +74,9 @@ pip install -r requirements.txt
 
 **4. Add your dataset**
 
-Place your Wind Turbine SCADA CSV file in the `data/` folder.
-The file must contain these five columns exactly:
+Place a SCADA CSV file in the `data/` folder. Two schemas are supported:
+
+**Wind Turbine schema:**
 
 | Column | Type |
 | ------ | ---- |
@@ -81,29 +86,49 @@ The file must contain these five columns exactly:
 | `Theoretical_Power_Curve (KWh)` | float |
 | `Wind Direction (degrees)` | float |
 
-A compatible dataset is available on Kaggle:
-[Wind Turbine SCADA Dataset](https://www.kaggle.com/datasets/berkerisen/wind-turbine-scada-dataset)
+Dataset: [Wind Turbine SCADA Dataset](https://www.kaggle.com/datasets/berkerisen/wind-turbine-scada-dataset)
+
+**Solar Power schema:**
+
+| Column | Type |
+| ------ | ---- |
+| `DATE_TIME` | datetime |
+| `PLANT_ID` | string |
+| `SOURCE_KEY` | string |
+| `DC_POWER` | float |
+| `AC_POWER` | float |
+| `DAILY_YIELD` | float |
+| `TOTAL_YIELD` | float |
+
+Dataset: [Solar Power Generation Data](https://www.kaggle.com/datasets/anikannal/solar-power-generation-data)
 
 ---
 
 ## Usage
 
-**Single file:**
+**Single file (wind schema — default):**
 
 ```bash
 python main.py --file data/turbine.csv
 ```
 
-**Single file with custom output directory:**
+**Solar schema:**
 
 ```bash
-python main.py --file data/turbine.csv --output output/
+python main.py --file data/solar.csv --schema solar
 ```
 
 **Batch mode — process all CSVs in a folder:**
 
 ```bash
-python main.py --folder data/
+python main.py --folder data/ --schema wind
+```
+
+**Choose report format:**
+
+```bash
+python main.py --file data/turbine.csv --format html   # HTML only
+python main.py --file data/turbine.csv --format both   # Excel + HTML
 ```
 
 **Help:**
@@ -119,71 +144,80 @@ python main.py --help
 [CLEAN] 52,608 rows in → 52,543 rows clean (65 dropped)
 [ANALYSE] 3,226 rows excluded from efficiency (zero theoretical or non-positive output)
 [ANALYSE]
+[DETECT] 47 anomalies flagged (12 threshold, 35 rolling window)
 [VISUALISE]
   Chart saved → output\charts\power_trend.png
   Chart saved → output\charts\wind_scatter.png
   Chart saved → output\charts\monthly_bar.png
+  Chart saved → output\charts\anomaly_timeline.png
 [EXPORT]
-Report saved → output\report_2026-05-21.xlsx
+Report saved → output\report_2026-07-30.xlsx
 ```
 
 ---
 
 ## Output
 
-Each run produces:
-
-**`output/report_YYYY-MM-DD.xlsx`** — six-sheet Excel workbook:
+**`output/report_YYYY-MM-DD.xlsx`** — seven-sheet Excel workbook:
 
 | Sheet | Contents |
 | ----- | -------- |
-| Summary | Executive narrative paragraph + headline statistics table |
-| Clean Data | Full cleaned dataset with plain-English column headers |
-| Trend Analysis | Monthly mean and daily total active power aggregations |
-| Power Curve Analysis | Per-row efficiency ratios (operational periods only) |
-| Charts | All three embedded chart images |
+| Summary | Narrative paragraph + headline statistics |
+| Clean Data | Full cleaned dataset, plain-English headers |
+| Trend Analysis | Monthly mean and daily total aggregations |
+| Efficiency Analysis | Per-row efficiency/conversion ratios |
+| Charts | All four embedded chart images |
+| Anomaly Report | Flagged anomalous readings with detection method |
 | Data Quality Log | Cleaning decisions for this run, keyed by `run_id` |
 
-**`output/charts/`** — three standalone chart images:
+**`output/report_YYYY-MM-DD.html`** — self-contained single-file
+report with the same narrative, statistics, and charts embedded as
+base64 images. Opens offline, shareable as one file, deployable to
+GitHub Pages.
+
+**`output/charts/`** — four standalone chart images:
 
 | File | Chart |
 | ---- | ----- |
-| `power_trend.png` | Daily active power output over time |
-| `wind_scatter.png` | Wind speed vs output with theoretical curve overlay |
-| `monthly_bar.png` | Monthly mean active power |
+| `power_trend.png` | Daily power output over time |
+| `wind_scatter.png` | Output vs secondary metric, with reference line |
+| `monthly_bar.png` | Monthly mean power output |
+| `anomaly_timeline.png` | Power trend with anomalies highlighted |
 
-**`logs/data_quality.log`** — append-only CSV audit log. Every run
-appends structured entries with `run_id`, `run_timestamp`, `column`,
-`issue_type`, `row_count`, and `action_taken` — providing full
-historical lineage across all runs.
+**`logs/data_quality.log`** — append-only CSV audit log, keyed by
+`run_id` and `run_timestamp` across every run.
 
 ---
 
 ## Pipeline Architecture
 
-The pipeline follows a flat modular architecture. Each module owns
-exactly one responsibility and is independently importable.
-`main.py` is the only file that imports from all other modules.
-All column names, file paths, and thresholds are defined once in
-`config.py` — never hardcoded in logic.
+The pipeline is schema-agnostic, driven by a `SCHEMA_REGISTRY` in
+`config.py` that tells every module which columns, thresholds, and
+labels apply for the active `--schema`. Each module owns exactly one
+responsibility and is independently importable. `main.py` is the
+only file that imports from all other modules.
 
 ```
 CSV file(s)
     │
     ▼
-ingest.py ──── Schema validation against config.py constants
+ingest.py ──── Schema validation against SCHEMA_REGISTRY
     │
     ▼
 clean.py ───── Dedup → type coercion → null handling → date parse
     │                └── logs/data_quality.log (append-only)
     ▼
-analyse.py ─── Stats · Efficiency · Monthly · Daily · Wind bins
+analyse.py ─── Stats · Efficiency · Monthly · Daily · Distribution
     │
     ▼
-visualise.py ── Trend line · Scatter · Bar → output/charts/*.png
+detect.py ──── Threshold + rolling-window anomaly detection
     │
     ▼
-export.py ───── Six-sheet .xlsx → output/report_YYYY-MM-DD.xlsx
+visualise.py ── Trend · Scatter · Bar · Anomaly timeline → *.png
+    │
+    ├──▶ export.py ──────▶ output/report_YYYY-MM-DD.xlsx
+    └──▶ html_export.py ─▶ output/report_YYYY-MM-DD.html
+              (both use narrative.py for shared summary text)
 ```
 
 **Invariants the codebase never violates:**
@@ -192,63 +226,70 @@ export.py ───── Six-sheet .xlsx → output/report_YYYY-MM-DD.xlsx
 - No column name or path string appears outside `config.py`
 - No Python traceback ever reaches the user
 - Output filenames always include an ISO date timestamp
+- All schema differences live in `SCHEMA_REGISTRY` — no scattered
+  `if schema == "wind"` branches outside genuinely structural cases
+
+---
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+See `tests/` for coverage of schema validation, cleaning rules,
+efficiency exclusion logic, and anomaly detection — plus an
+end-to-end smoke test that runs the full pipeline on synthetic data.
 
 ---
 
 ## Project Structure
 
 ```
-energy-dashboard/
+energy-data-dashboard/
 │
-├── main.py              # CLI entry point and pipeline orchestrator
-├── ingest.py            # CSV loading and schema validation
-├── clean.py             # Data cleaning and quality logging
-├── analyse.py           # Statistics, aggregations, efficiency
-├── visualise.py         # Chart generation (.png export)
-├── export.py            # Excel workbook assembly
-├── config.py            # All constants — single source of truth
-├── requirements.txt     # Pinned dependencies
-├── CLAUDE.md            # AI agent context and workflow rules
+├── main.py               # CLI entry point and pipeline orchestrator
+├── ingest.py              # CSV loading and schema validation
+├── clean.py                # Data cleaning and quality logging
+├── analyse.py              # Statistics, aggregations, efficiency
+├── detect.py                # Anomaly detection (threshold + rolling)
+├── visualise.py            # Chart generation (.png export)
+├── export.py                 # Excel workbook assembly
+├── html_export.py            # Self-contained HTML report assembly
+├── narrative.py              # Shared narrative text generation
+├── config.py                  # All constants + SCHEMA_REGISTRY
+├── requirements.txt           # Pinned runtime dependencies
+├── requirements-dev.txt       # Testing dependencies
+├── CLAUDE.md                  # AI agent context and workflow rules
 │
-├── data/                # Input CSV files (gitignored)
-├── output/              # Generated reports and charts (gitignored)
-│   └── charts/          # .png chart files
-├── logs/                # data_quality.log (gitignored)
+├── tests/                     # pytest test suite
+├── data/                      # Input CSV files (gitignored)
+├── output/                    # Generated reports and charts (gitignored)
+├── logs/                      # data_quality.log (gitignored)
+├── docs/screenshots/          # README images
 │
-├── docs/
-│   └── screenshots/     # README images
-│
-└── context/             # Project architecture and specification docs
+└── context/                   # Architecture and specification docs
     ├── project-overview.md
     ├── architecture.md
     ├── code-standards.md
     ├── ai-workflow-rules.md
     ├── progress-tracker.md
     └── feature-specs/
-        ├── unit-01-spec.md
-        ├── unit-02-spec.md
-        ├── unit-03-spec.md
-        ├── unit-04-spec.md
-        ├── unit-05-spec.md
-        ├── unit-06-spec.md
-        ├── unit-07-spec.md
-        └── unit-08-spec.md
+        └── unit-01-spec.md ... unit-12-spec.md
 ```
 
 ---
 
 ## Development Process
 
-This project was built using a spec-driven, incremental workflow.
-Each of the eight build units was fully specified before any code
-was written — with explicit done-when checklists, dependency
-ordering, and architecture invariants enforced at every step.
-
-The `context/` folder contains the full set of living documents
-that defined the project throughout the build: architecture
-decisions, code standards, AI agent workflow rules, a decisions
-log, and individual spec files for each unit. These documents were
-updated in sync with the code at every stage.
+This project was built using a spec-driven, incremental workflow —
+twelve build units, each fully specified before any code was written,
+with explicit done-when checklists and architecture invariants
+enforced throughout. The `context/` folder contains the full set of
+living documents that defined the project at every stage: architecture
+decisions, code standards, a decisions log, and individual spec files
+per unit.
 
 ---
 
