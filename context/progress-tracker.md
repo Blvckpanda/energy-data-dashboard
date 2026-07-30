@@ -16,6 +16,8 @@
 | 10   | Anomaly Detection             | Complete    | Yes     |
 | 11   | HTML Report                   | Complete    | Yes     |
 | 12   | Test Suite                    | Complete    | Yes     |
+| 13   | CI Pipeline                   | Complete    | Yes     |
+| 14   | Dockerize                     | Complete    | Yes     |
 
 ---
 +-
@@ -353,6 +355,12 @@ repo settings. `main.py` gets a `--format` flag: `--format excel` (default),
 | 2026-07-29 | html_export.py uses plain-English label lookup, not raw config names | "Mean Efficiency" instead of "Mean efficiency_ratio" in the HTML stats table |
 | 2026-07-29 | Test suite uses fully synthetic DataFrames — no real datasets required | Tests run in any environment, including CI, without Kaggle CSVs being present |
 | 2026-07-29 | e2e smoke test monkeypatches config.CHARTS_DIR + config.LOG_PATH for isolation | Ensures charts and logs go to tmp_path, not real project directories |
+| 2026-07-30 | CI matrix across Python 3.10 and 3.11 | Confirms README's Python 3.10+ claim is actually tested |
+| 2026-07-30 | Deliberate-failure branch test-ci-failure pushed for CI verification | Proves CI catches regressions when user opens PR from that branch |
+| 2026-07-30 | Test suite has zero hidden dependencies (confirmed by clearing data/ output/ logs/ and re-running) | 23/23 tests pass with no data files present — CI runners have no dataset dependency |
+| 2026-07-30 | visualise.py creates output/charts/ at runtime via os.makedirs(exist_ok=True) | Fixes Docker volume-mount bug where host output/ mount overwrites the build-time charts/ directory |
+| 2026-07-30 | Dockerfile copies source files individually, not COPY . . | Keeps image minimal — no tests/, context/, docs/ inside the container |
+| 2026-07-30 | Docker isolation verified by moving .venv aside and re-running | Pipeline runs entirely through the container with no local Python or venv needed |
 
 ---
 

@@ -103,6 +103,36 @@ Dataset: [Wind Turbine SCADA Dataset](https://www.kaggle.com/datasets/berkerisen
 
 Dataset: [Solar Power Generation Data](https://www.kaggle.com/datasets/anikannal/solar-power-generation-data)
 
+## Run with Docker
+
+No local Python setup required.
+
+**Build:**
+
+```bash
+docker build -t energy-dashboard .
+```
+
+**Run (PowerShell):**
+
+```powershell
+docker run --rm `
+  -v ${PWD}/data:/app/data `
+  -v ${PWD}/output:/app/output `
+  -v ${PWD}/logs:/app/logs `
+  energy-dashboard --file data/turbine.csv
+```
+
+**Run (bash):**
+
+```bash
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/logs:/app/logs \
+  energy-dashboard --file data/turbine.csv
+```
+
 ---
 
 ## Usage

@@ -13,6 +13,7 @@ This directory must exist before visualise() is called.
 """
 
 from pathlib import Path
+import os
 import matplotlib
 
 matplotlib.use("Agg")  # Non-interactive backend — no display window needed
@@ -51,6 +52,10 @@ def visualise(results: dict[str, pd.DataFrame], schema: str) -> list[Path]:
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     labels = AXIS_LABELS[schema]
+
+    # Ensure charts directory exists (critical when running under Docker
+    # with host volume mounts that overwrite build-time directories)
+    os.makedirs(config.CHARTS_DIR, exist_ok=True)
 
     paths = [
         _plot_power_trend(results["daily"], labels["primary"]),
