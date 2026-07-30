@@ -24,6 +24,9 @@ output/
 # Hermes agent working files
 .hermes/
 
+# Personal research notes
+WEALTH-RESEARCH-2026.md
+
 # Logs — append-only, not source code
 logs/
 
