@@ -5,6 +5,7 @@
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-3.x-11557C?style=flat-square)
 ![openpyxl](https://img.shields.io/badge/openpyxl-3.x-217346?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
+![Tests](https://github.com/Blvckpanda/energy-data-dashboard/actions/workflows/tests.yml/badge.svg)
 
 A schema-agnostic Python pipeline that ingests operational SCADA data
 from CSV files — Wind Turbine or Solar Power Generation — cleans and
