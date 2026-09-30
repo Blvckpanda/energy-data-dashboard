@@ -28,7 +28,8 @@ def detect(df: pd.DataFrame, schema: str) -> pd.DataFrame:
 
     Parameters:
         df (pd.DataFrame): clean DataFrame (post clean.clean())
-        schema (str): "wind" or "solar" — selects primary_power_col
+        schema (str): a schema name from config.SCHEMA_REGISTRY —
+                      selects primary_power_col
                       and min_primary from config.SCHEMA_REGISTRY
 
     Returns:

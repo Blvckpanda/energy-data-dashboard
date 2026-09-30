@@ -34,7 +34,8 @@ def clean(df: pd.DataFrame, schema: str) -> tuple[pd.DataFrame, str]:
     Parameters:
         df (pd.DataFrame): raw DataFrame from ingest.load_csv(),
                            schema already validated by ingest.validate_schema()
-        schema (str): "wind" or "solar" — selects column config from
+        schema (str): a schema name from config.SCHEMA_REGISTRY —
+                      selects column config from
                       config.SCHEMA_REGISTRY
 
     Returns:

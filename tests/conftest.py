@@ -46,6 +46,19 @@ def solar_df() -> pd.DataFrame:
 
 
 @pytest.fixture
+def hydro_df() -> pd.DataFrame:
+    """20 rows of synthetic hydro SCADA data, 10-minute intervals."""
+    timestamps = pd.date_range("2024-06-01", periods=20, freq="10min")
+    cfg = config.SCHEMA_REGISTRY["hydro"]
+    return pd.DataFrame({
+        config.COL_HYDRO_DATETIME: timestamps.strftime(cfg["date_format"]),
+        config.COL_HYDRO_FLOW: [12.0 + i * 0.5 for i in range(20)],
+        config.COL_HYDRO_GENERATED_POWER: [800.0 + i * 40 for i in range(20)],
+        config.COL_HYDRO_THEORETICAL_POWER: [900.0 + i * 45 for i in range(20)],
+    })
+
+
+@pytest.fixture
 def wind_df_with_issues(wind_df) -> pd.DataFrame:
     """Wind DataFrame with a duplicate row, a null, and a bad string."""
     df = wind_df.copy()

@@ -7,6 +7,10 @@ base64 data URIs — no external CSS, JS, or image file dependencies.
 The file opens correctly offline and is safe to share as a single
 attachment or deploy to GitHub Pages.
 
+Fully schema-agnostic: statistics labels and the report title come
+from config.SCHEMA_REGISTRY — adding a schema requires no changes
+here.
+
 Side effect: writes one .html file to the output directory.
 """
 
@@ -26,7 +30,7 @@ def export_html(
     chart_paths: list[Path],
     schema: str,
     output_dir: Path,
-    run_id: str | list[str] = "",
+    run_ids: list[str] | None = None,
 ) -> Path:
     """
     Generate and save the self-contained HTML report.
@@ -35,12 +39,13 @@ def export_html(
         clean_df (pd.DataFrame): clean DataFrame for this run
         results (dict): analysis results, including 'anomalies'
         chart_paths (list[Path]): four chart .png paths from visualise()
-        schema (str): "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
         output_dir (Path): directory to write the report to
-        run_id (str | list[str]): current run ID, or list of per-file
-            IDs in batch mode — used to include this run's quality-log
-            entries as the report's Data Quality note. Pass "" to omit
-            the section.
+        run_ids (list[str] | None): run UUIDs, normalised to a list at
+            the pipeline boundary (main._run_pipeline) — one for
+            single-file runs, one per file for batch runs. Used to
+            include this run's quality-log entries as the report's
+            Data Quality note. None omits the section.
 
     Returns:
         Path: path to the saved .html file
@@ -52,7 +57,7 @@ def export_html(
     narrative_text = narrative.build_narrative(results, clean_df, schema)
     stats_html = _render_stats_table(results, cfg)
     anomaly_html = _render_anomaly_summary(results)
-    quality_html = _render_quality_note(run_id)
+    quality_html = _render_quality_note(run_ids)
     images_b64 = [_encode_image(p) for p in chart_paths]
 
     chart_titles = [
@@ -83,20 +88,19 @@ def export_html(
     return out_path
 
 
-def _render_quality_note(run_id: str | list[str]) -> str:
+def _render_quality_note(run_ids: list[str] | None) -> str:
     """
     Build the Data Quality note: cleaning decisions logged for the
-    given run ID(s), grouped by issue type and action taken.
+    given run IDs, grouped by issue type and action taken.
 
     Parameters:
-        run_id (str | list[str]): current run ID(s). An empty string
-            (or list) yields a note saying no log data is attached.
+        run_ids (list[str] | None): current run UUIDs. None or empty
+            yields a note saying no log data is attached.
 
     Returns:
         str: HTML block, either a summary table or a plain paragraph
     """
-    run_ids = run_id if isinstance(run_id, list) else [run_id]
-    run_ids = [r for r in run_ids if r]
+    run_ids = run_ids or []
     if not run_ids or not config.LOG_PATH.exists():
         return "<p>No data quality log entries are attached to this report.</p>"
 
@@ -168,7 +172,8 @@ def _render_stats_table(results: dict, cfg: dict) -> str:
 
     Parameters:
         results (dict): analysis results dict
-        cfg (dict): schema config from SCHEMA_REGISTRY
+        cfg (dict): schema config from SCHEMA_REGISTRY — supplies
+                    the plain-English labels
 
     Returns:
         str: HTML <tr> rows for the statistics table body
@@ -177,16 +182,9 @@ def _render_stats_table(results: dict, cfg: dict) -> str:
     efficiency = results["efficiency"]
     ratio_col = cfg["ratio_name"]
 
-    # Use plain-English labels
-    if cfg["primary_power_col"] == config.COL_ACTIVE_POWER:
-        primary_label = "Active Power (kW)"
-    else:
-        primary_label = "AC Power (kW)"
-
-    if cfg["ratio_name"] == "efficiency_ratio":
-        ratio_label = "Efficiency"
-    else:
-        ratio_label = "Conversion Ratio"
+    # Plain-English labels come straight from the registry
+    primary_label = cfg["primary_label"]
+    ratio_label = cfg["ratio_label"]
 
     rows = [
         (f"Mean {primary_label}",
@@ -247,12 +245,13 @@ def _build_html(
         quality_html (str): data quality note HTML block
         images_b64 (list[str]): base64 data URIs, one per chart
         chart_titles (list[str]): plain-English titles, same order
-        schema (str): "wind" or "solar" — used in the page title
+        schema (str): active schema name — used via the registry's
+                      asset_label in the page title
 
     Returns:
         str: complete, valid, self-contained HTML document
     """
-    schema_label = "Wind Turbine" if schema == "wind" else "Solar Power"
+    schema_label = config.SCHEMA_REGISTRY[schema]["asset_label"]
     charts_html = "".join(
         f'<div class="chart"><h3>{title}</h3><img src="{img}" alt="{title}"></div>'
         for title, img in zip(chart_titles, images_b64)

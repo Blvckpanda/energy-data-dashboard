@@ -7,7 +7,13 @@ Parses CLI arguments and calls pipeline modules in sequence.
 Both single-file and batch modes share one _run_pipeline() stage
 sequence (ANALYSE → DETECT → VISUALISE → EXPORT). Single-file runs
 carry one run_id; batch runs carry every file's run_id so reports
-include each file's quality-log entries.
+include each file's quality-log entries. Run IDs are normalised to
+a list once in _run_pipeline — the pipeline boundary — so exporters
+always receive lists.
+
+Fully registry-driven: the --schema choices, and every downstream
+schema behaviour, come from config.SCHEMA_REGISTRY — adding a schema
+requires only a registry entry, no changes to this module.
 """
 import argparse
 import sys
@@ -25,16 +31,21 @@ import html_export
 import detect
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     Parse and return command-line arguments.
+
+    Parameters:
+        argv (list[str] | None): argument list to parse. None uses
+            sys.argv (the normal CLI path); tests pass explicit lists.
 
     Returns:
         argparse.Namespace with attributes:
             file   (Path | None): path to a single CSV file
             folder (Path | None): path to a folder of CSV files
             output (Path):        path to the output directory
-            schema (str):         "wind" or "solar"
+            schema (str):         a schema name from
+                                  config.SCHEMA_REGISTRY
             format (str):         "excel", "html", or "both"
     """
     parser = argparse.ArgumentParser(
@@ -67,9 +78,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--schema",
-        choices=["wind", "solar"],
+        choices=sorted(config.SCHEMA_REGISTRY.keys()),
         default="wind",
-        help="SCADA schema to use: wind (default) or solar.",
+        help="SCADA schema to use (choices from config.SCHEMA_REGISTRY; "
+            "default: wind).",
     )
     parser.add_argument(
         "--format",
@@ -77,7 +89,7 @@ def parse_args() -> argparse.Namespace:
         default="excel",
         help="Report format: excel (default), html, or both.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None:
@@ -89,10 +101,12 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     result. The report's quality-log entries are filtered to this
     run's run_id.
 
+    Stages: LOAD → CLEAN → ANALYSE → DETECT → VISUALISE → EXPORT
+
     Parameters:
         file_path (Path): path to the SCADA CSV file to process
         output_dir (Path): directory to write the report and charts to
-        schema (str): SCADA schema — "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
         fmt (str): report format — "excel", "html", or "both"
 
     Returns:
@@ -134,6 +148,9 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
     Concatenates clean DataFrames with a source_file column, then
     runs the shared analysis/export stages on the combined data.
 
+    Stages: LOAD → CLEAN (per file) → ANALYSE → DETECT → VISUALISE
+    → EXPORT (on consolidated data)
+
     Files that fail ingestion or cleaning are skipped with a
     plain-English warning. Processing continues for remaining files.
     Every successfully processed file's run_id is carried into the
@@ -144,7 +161,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
         folder_path (Path): directory containing SCADA CSV files
         output_dir (Path): directory to write the consolidated report
                            and charts to
-        schema (str): SCADA schema — "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
         fmt (str): report format — "excel", "html", or "both"
 
     Returns:
@@ -230,13 +247,18 @@ def _run_pipeline(
     Run the shared post-clean stages: ANALYSE → DETECT → VISUALISE
     → EXPORT, writing reports and charts to output_dir.
 
+    This is the pipeline boundary for run IDs: whichever shape the
+    caller passes (single string, or a list from batch mode) is
+    normalised here — exactly once — into a list[str] that both
+    exporters receive.
+
     Parameters:
         df (pd.DataFrame): clean DataFrame (single file or batch-
                            concatenated with a source_file column)
         run_id (str | list[str]): this run's UUID, or the list of
                                   per-file UUIDs in batch mode
         output_dir (Path): directory to write the report and charts to
-        schema (str): "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
         fmt (str): "excel", "html", or "both"
 
     Returns:
@@ -248,6 +270,9 @@ def _run_pipeline(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     charts_dir = output_dir / "charts"
+
+    # Single run-ID normalisation point for the whole pipeline
+    run_ids: list[str] = [run_id] if isinstance(run_id, str) else list(run_id)
 
     # ── ANALYSE ───────────────────────────────────────────────────
     try:
@@ -288,7 +313,7 @@ def _run_pipeline(
                 clean_df=df,
                 results=results,
                 chart_paths=chart_paths,
-                run_id=run_id,
+                run_ids=run_ids,
                 output_dir=output_dir,
                 schema=schema,
             )
@@ -300,7 +325,7 @@ def _run_pipeline(
                 chart_paths=chart_paths,
                 schema=schema,
                 output_dir=output_dir,
-                run_id=run_id,
+                run_ids=run_ids,
             )
             print(f"Report saved → {html_path}")
     except SystemExit:

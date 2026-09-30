@@ -8,7 +8,6 @@ and batch modes.
 """
 
 import openpyxl
-import pandas as pd
 import pytest
 
 import main
@@ -125,3 +124,45 @@ def test_run_batch_report_contains_all_run_ids(
         ws.cell(row=r, column=1).value for r in range(2, ws.max_row + 1)
     }
     assert ids_in_sheet == logged_ids
+
+
+# ── Registry-driven schemas ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("schema", ["wind", "solar", "hydro"])
+def test_run_single_works_for_every_registry_schema(
+    wind_df, solar_df, hydro_df, schema, tmp_path, monkeypatch
+):
+    """Each registry schema runs end-to-end with zero code changes."""
+    _isolate(tmp_path, monkeypatch)
+
+    dfs = {"wind": wind_df, "solar": solar_df, "hydro": hydro_df}
+    csv_path = tmp_path / f"synthetic_{schema}.csv"
+    dfs[schema].to_csv(csv_path, index=False)
+
+    output_dir = tmp_path / "output"
+    main.run_single(csv_path, output_dir, schema=schema, fmt="both")
+
+    xlsx_reports = list(output_dir.glob("report_*.xlsx"))
+    html_reports = list(output_dir.glob("report_*.html"))
+    charts = list((output_dir / "charts").glob("*.png"))
+
+    assert len(xlsx_reports) == 1
+    assert len(html_reports) == 1
+    assert len(charts) == 4
+
+    # Narrative reflects the schema's own asset label
+    wb = openpyxl.load_workbook(xlsx_reports[0])
+    narrative_text = wb["Summary"]["A1"].value
+    asset_label = config.SCHEMA_REGISTRY[schema]["asset_label"].lower()
+    assert asset_label in narrative_text.lower()
+
+
+def test_schema_choices_come_from_registry(capsys):
+    """--schema help lists every registry key — proof of no hardcoded
+    choices. A new registry entry would appear here automatically."""
+    with pytest.raises(SystemExit):
+        main.parse_args(["--file", "x.csv", "--help"])
+    out = capsys.readouterr().out
+    for schema_name in config.SCHEMA_REGISTRY:
+        assert schema_name in out

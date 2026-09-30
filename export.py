@@ -3,11 +3,12 @@ export.py
 
 Owns Excel workbook assembly and file export.
 Receives the clean DataFrame, analysis results dict, chart image
-paths, run_id, schema, and output directory. Assembles a seven-sheet
-.xlsx workbook and returns the output file path.
+paths, run_id(s), schema, and output directory. Assembles a
+seven-sheet .xlsx workbook and returns the output file path.
 
-Schema-aware: headers, narrative text, and sheet naming come from
-config.SCHEMA_REGISTRY and the schema-keyed header dicts below.
+Fully schema-agnostic: sheet headers, narrative text, and statistics
+labels come from config.SCHEMA_REGISTRY — adding a schema requires
+no changes here.
 
 Side effect: writes one .xlsx file to output/.
 """
@@ -26,57 +27,39 @@ import config
 import narrative
 
 
-# ── Plain-English Header Mappings (schema-keyed) ───────────────────
-WIND_HEADERS = {
-    config.COL_DATETIME:       "Timestamp",
-    config.COL_ACTIVE_POWER:   "Active Power (kW)",
-    config.COL_WIND_SPEED:     "Wind Speed (m/s)",
-    config.COL_THEORETICAL:    "Theoretical Power (kWh)",
-    config.COL_WIND_DIRECTION: "Wind Direction (°)",
-}
+def _efficiency_headers(cfg: dict) -> dict:
+    """
+    Build the Efficiency Analysis sheet's plain-English headers from
+    the registry: display names for the efficiency DataFrame's own
+    columns plus the ratio column.
 
-SOLAR_HEADERS = {
-    config.COL_SOLAR_DATETIME: "Timestamp",
-    config.COL_PLANT_ID:       "Plant ID",
-    config.COL_SOURCE_KEY:     "Inverter ID",
-    config.COL_DC_POWER:       "DC Power (kW)",
-    config.COL_AC_POWER:       "AC Power (kW)",
-    config.COL_DAILY_YIELD:    "Daily Yield (kWh)",
-    config.COL_TOTAL_YIELD:    "Total Yield (kWh)",
-}
+    Parameters:
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
 
-CLEAN_DATA_HEADERS = {
-    "wind":  WIND_HEADERS,
-    "solar": SOLAR_HEADERS,
-}
-
-WIND_EFF_HEADERS = {
-    config.COL_DATETIME:       "Timestamp",
-    config.COL_ACTIVE_POWER:   "Active Power (kW)",
-    config.COL_WIND_SPEED:     "Wind Speed (m/s)",
-    config.COL_THEORETICAL:    "Theoretical Power (kWh)",
-    "efficiency_ratio":        "Efficiency Ratio",
-}
-
-SOLAR_EFF_HEADERS = {
-    config.COL_SOLAR_DATETIME: "Timestamp",
-    config.COL_SOURCE_KEY:     "Inverter ID",
-    config.COL_DC_POWER:       "DC Power (kW)",
-    config.COL_AC_POWER:       "AC Power (kW)",
-    "conversion_ratio":        "Conversion Ratio",
-}
-
-EFFICIENCY_HEADERS = {
-    "wind":  WIND_EFF_HEADERS,
-    "solar": SOLAR_EFF_HEADERS,
-}
+    Returns:
+        dict: mapping of raw column names to display headers
+    """
+    ratio_name = cfg["ratio_name"]
+    ratio_label = cfg["ratio_label"]
+    seen: set[str] = set()
+    eff_cols: list[str] = []
+    for col in (cfg["datetime_col"], cfg["primary_power_col"],
+                cfg["secondary_col"], cfg["reference_col"], ratio_name):
+        if col not in seen:
+            seen.add(col)
+            eff_cols.append(col)
+    return {
+        col: (ratio_label if col == ratio_name
+              else cfg["display_names"].get(col, col))
+        for col in eff_cols
+    }
 
 
 def export(
     clean_df: pd.DataFrame,
     results: dict[str, pd.DataFrame],
     chart_paths: list[Path],
-    run_id: str | list[str],
+    run_ids: list[str],
     output_dir: Path,
     schema: str,
 ) -> Path:
@@ -92,11 +75,12 @@ def export(
             visualise.visualise(), in order:
             [power_trend.png, wind_scatter.png, monthly_bar.png,
              anomaly_timeline.png]
-        run_id (str | list[str]): one UUID, or a list of UUIDs, from
-            clean.clean() — the quality log is filtered to entries
-            matching any of them (batch runs pass every file's ID)
+        run_ids (list[str]): run UUIDs from clean.clean(), normalised
+            to a list at the pipeline boundary (main._run_pipeline) —
+            one for single-file runs, one per file for batch runs. The
+            quality log is filtered to entries matching any of them.
         output_dir (Path): directory to write the report to
-        schema (str): "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
 
     Returns:
         Path: full path of the written .xlsx file,
@@ -105,27 +89,28 @@ def export(
     Assumptions:
         - output_dir exists
         - All four chart .png files in chart_paths exist on disk
-        - logs/data_quality.log exists and contains entries for run_id(s)
+        - logs/data_quality.log exists and contains entries for run_ids
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     wb = Workbook()
     wb.remove(wb.active)  # Remove the default empty sheet
 
     # Add sheets in required order
-    _write_summary(wb.create_sheet("Summary"), results, clean_df, schema, run_id)
+    _write_summary(
+        wb.create_sheet("Summary"), results, clean_df, cfg, run_ids, schema
+    )
     _write_dataframe(
         wb.create_sheet("Clean Data"),
         clean_df,
-        plain_headers=CLEAN_DATA_HEADERS[schema],
+        plain_headers=cfg["display_names"],
     )
     _write_trend_analysis(wb.create_sheet("Trend Analysis"), results, cfg)
     _write_efficiency_analysis(
-        wb.create_sheet("Efficiency Analysis"), results["efficiency"], schema
+        wb.create_sheet("Efficiency Analysis"), results["efficiency"], cfg
     )
     _write_charts(wb.create_sheet("Charts"), chart_paths)
     _write_anomalies(wb.create_sheet("Anomaly Report"), results["anomalies"], cfg)
-    _write_quality_log(wb.create_sheet("Data Quality Log"), run_id)
-    # (run_id may be a list — _write_quality_log handles both shapes)
+    _write_quality_log(wb.create_sheet("Data Quality Log"), run_ids)
 
     # Build timestamped filename — Invariant 6
     base_filename = f"report_{date.today().isoformat()}"
@@ -148,8 +133,8 @@ def export(
 
 
 def _write_summary(
-    ws, results: dict, clean_df: pd.DataFrame, schema: str,
-    run_id: str | list[str],
+    ws, results: dict, clean_df: pd.DataFrame, cfg: dict,
+    run_ids: list[str], schema: str,
 ) -> None:
     """
     Write the Summary sheet with narrative paragraph and statistics table.
@@ -163,9 +148,11 @@ def _write_summary(
         ws: openpyxl Worksheet
         results (dict): analysis results from analyse.analyse()
         clean_df (pd.DataFrame): cleaned SCADA DataFrame
-        schema (str): "wind" or "solar"
-        run_id (str | list[str]): current run ID, or list of per-file
-                                  run IDs in batch mode
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+        run_ids (list[str]): current run ID, or per-file run IDs in
+                             batch mode
+        schema (str): active schema name — build_narrative keys the
+                      registry lookup by name
     """
     # ── Component 1: Narrative paragraph ────────────────────────────
     narrative_text = narrative.build_narrative(results, clean_df, schema)
@@ -177,20 +164,14 @@ def _write_summary(
     # ── Component 2: Headline statistics table (rows 5 onward) ──────
     stats = results["stats"]
     efficiency_df = results["efficiency"]
-    cfg = config.SCHEMA_REGISTRY[schema]
     ratio_col = cfg["ratio_name"]
     primary = cfg["primary_power_col"]
     secondary = cfg["secondary_col"]
 
-    # Build plain-English labels for stats columns
-    if schema == "wind":
-        primary_label = "Active Power (kW)"
-        secondary_label = "Wind Speed (m/s)"
-        ratio_label = "Mean Efficiency (%)"
-    else:
-        primary_label = "AC Power (kW)"
-        secondary_label = "DC Power (kW)"
-        ratio_label = "Mean Conversion Ratio (%)"
+    # Plain-English labels come straight from the registry
+    primary_label = cfg["primary_label"]
+    secondary_label = cfg["secondary_label"]
+    ratio_label = f"Mean {cfg['ratio_label']} (%)"
 
     stats_table = [
         ("Metric", "Value"),
@@ -211,8 +192,8 @@ def _write_summary(
          len(clean_df) - len(efficiency_df)),
     ]
 
-    if isinstance(run_id, list):
-        stats_table.append(("Source Files Processed", len(run_id)))
+    if len(run_ids) > 1:
+        stats_table.append(("Source Files Processed", len(run_ids)))
 
     for row_idx, (label, value) in enumerate(stats_table, start=5):
         ws.cell(row=row_idx, column=1, value=label)
@@ -290,16 +271,18 @@ def _write_trend_analysis(ws, results: dict, cfg: dict) -> None:
         ws.cell(row=row_num, column=2, value=round(power.iloc[0], 2))
 
 
-def _write_efficiency_analysis(ws, efficiency_df: pd.DataFrame, schema: str) -> None:
+def _write_efficiency_analysis(
+    ws, efficiency_df: pd.DataFrame, cfg: dict
+) -> None:
     """
     Write the efficiency/conversion DataFrame to the sheet.
 
     Parameters:
         ws: openpyxl Worksheet
         efficiency_df (pd.DataFrame): efficiency results
-        schema (str): "wind" or "solar"
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
     """
-    _write_dataframe(ws, efficiency_df, plain_headers=EFFICIENCY_HEADERS[schema])
+    _write_dataframe(ws, efficiency_df, plain_headers=_efficiency_headers(cfg))
 
 
 def _write_charts(ws, chart_paths: list[Path]) -> None:
@@ -338,32 +321,31 @@ def _write_anomalies(ws, anomalies_df: pd.DataFrame, cfg: dict) -> None:
     Parameters:
         ws: openpyxl Worksheet
         anomalies_df (pd.DataFrame): output of detect.detect()
-        cfg (dict): schema config, used for the primary column label
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
 
     Returns:
         None
     """
     headers = {
         cfg["datetime_col"]: "Timestamp",
-        cfg["primary_power_col"]: "Output Value",
+        cfg["primary_power_col"]: cfg["primary_label"],
         "anomaly_type": "Detection Method",
         "deviation": "Deviation from Mean",
     }
     _write_dataframe(ws, anomalies_df, plain_headers=headers)
 
 
-def _write_quality_log(ws, run_id: str | list[str]) -> None:
+def _write_quality_log(ws, run_ids: list[str]) -> None:
     """
     Write quality log entries for the current run to the sheet.
 
     Parameters:
         ws: openpyxl Worksheet
-        run_id (str | list[str]): UUID identifying the current run, or
-            a list of per-file UUIDs in batch mode — entries matching
-            any listed ID are included
+        run_ids (list[str]): run UUIDs, normalised to a list at the
+            pipeline boundary — entries matching any listed ID are
+            included
     """
     log_path: Path = config.LOG_PATH
-    run_ids = run_id if isinstance(run_id, list) else [run_id]
 
     with open(log_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)

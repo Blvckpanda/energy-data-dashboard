@@ -6,7 +6,6 @@ Invariant 6 (a run never overwrites a previous report).
 """
 
 import openpyxl
-import pandas as pd
 import pytest
 
 import config

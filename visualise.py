@@ -1,12 +1,13 @@
 """
 visualise.py
 
-Owns chart generation and .png export to output/charts/.
+Owns chart generation and .png export to the charts directory.
 Accepts result DataFrames from analyse.py and saves one .png
 per chart. Returns a list of saved file paths for use by export.py.
 
-Schema-aware: axis labels and scatter reference series vary by
-schema, sourced from config.SCHEMA_REGISTRY.
+Fully schema-agnostic: axis labels, chart titles, and scatter
+reference behaviour come from config.SCHEMA_REGISTRY — adding a
+schema requires no changes here.
 
 Side effect: writes .png files to the charts directory
 (config.CHARTS_DIR by default, or the charts_dir parameter).
@@ -24,11 +25,6 @@ import config
 
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.1)
 
-AXIS_LABELS = {
-    "wind":  {"primary": "Active Power (kW)",  "secondary": "Wind Speed (m/s)"},
-    "solar": {"primary": "AC Power (kW)",      "secondary": "DC Power (kW)"},
-}
-
 
 def visualise(
     results: dict[str, pd.DataFrame],
@@ -42,8 +38,8 @@ def visualise(
         results (dict[str, pd.DataFrame]): the full results dict
             from analyse.analyse(). Must contain keys:
             'daily', 'daily_mean', 'efficiency', 'monthly', 'anomalies'.
-        schema (str): "wind" or "solar" — selects axis labels and
-                      scatter reference series logic.
+        schema (str): active schema name — selects labels and scatter
+                      reference behaviour from config.SCHEMA_REGISTRY
         charts_dir (Path | None): directory to write .png files to.
             Defaults to config.CHARTS_DIR when None.
 
@@ -54,7 +50,7 @@ def visualise(
                      anomaly_timeline.png]
     """
     cfg = config.SCHEMA_REGISTRY[schema]
-    labels = AXIS_LABELS[schema]
+    labels = {"primary": cfg["primary_label"], "secondary": cfg["secondary_label"]}
     out_dir = config.CHARTS_DIR if charts_dir is None else Path(charts_dir)
 
     # Ensure the charts directory exists (critical when running under
@@ -63,7 +59,7 @@ def visualise(
 
     paths = [
         _plot_power_trend(results["daily"], labels["primary"], out_dir),
-        _plot_scatter(results["efficiency"], cfg, schema, labels, out_dir),
+        _plot_scatter(results["efficiency"], cfg, labels, out_dir),
         _plot_monthly_bar(results["monthly"], labels["primary"], out_dir),
         _plot_anomaly_timeline(
             results["daily_mean"], results["anomalies"], cfg,
@@ -111,27 +107,26 @@ def _plot_power_trend(
 
 
 def _plot_scatter(
-    efficiency_df: pd.DataFrame,
-    cfg: dict,
-    schema: str,
-    labels: dict,
-    out_dir: Path,
+    efficiency_df: pd.DataFrame, cfg: dict, labels: dict, out_dir: Path
 ) -> Path:
     """
     Generate a scatter plot of secondary vs primary power.
 
-    Wind: actual vs theoretical power curve (data-derived reference line).
-    Solar: AC vs DC power with ideal 1:1 conversion reference line.
+    The reference series is chosen by the registry's
+    scatter_reference kind:
+        "column"   — plot reference_col over the data (a theoretical
+                     curve shipped with the dataset, e.g. wind)
+        "identity" — plot the ideal 1:1 y=x line (no theoretical
+                     reference exists, e.g. solar AC vs DC)
 
     Parameters:
         efficiency_df (pd.DataFrame): efficiency/conversion result
         cfg (dict): schema config from SCHEMA_REGISTRY
-        schema (str): "wind" or "solar"
-        labels (dict): axis labels dict
+        labels (dict): plain-English axis labels
         out_dir (Path): directory to save the .png file to
 
     Returns:
-        Path: path to the saved wind_scatter.png file
+        Path: path to the saved scatter .png file
     """
     sorted_df = efficiency_df.sort_values(cfg["secondary_col"])
 
@@ -147,9 +142,8 @@ def _plot_scatter(
         label="Actual Output",
     )
 
-    # Reference line
-    if schema == "wind":
-        # Wind: data-derived theoretical power curve
+    # Reference line — dispatched on registry kind
+    if cfg["scatter_reference"] == "column":
         ax.plot(
             sorted_df[cfg["secondary_col"]],
             sorted_df[cfg["reference_col"]],
@@ -157,9 +151,7 @@ def _plot_scatter(
             color=sns.color_palette("muted")[2],
             label="Theoretical Power Curve",
         )
-        title = "Secondary Metric vs Primary Power Output (with Theoretical Curve)"
-    else:
-        # Solar: ideal 1:1 line (y = x) representing perfect conversion
+    else:  # "identity" — ideal 1:1 conversion line (y = x)
         x_vals = sorted_df[cfg["secondary_col"]]
         ax.plot(
             x_vals, x_vals,
@@ -167,9 +159,12 @@ def _plot_scatter(
             color=sns.color_palette("muted")[2],
             label="Ideal 1:1 Conversion",
         )
-        title = "DC Power vs AC Power Output (with Ideal Conversion Line)"
 
-    ax.set_title(title, fontsize=13, pad=12)
+    ax.set_title(
+        f"{labels['secondary']} vs {labels['primary']} "
+        f"(with Reference Line)",
+        fontsize=13, pad=12,
+    )
     ax.set_xlabel(labels["secondary"], fontsize=11)
     ax.set_ylabel(labels["primary"], fontsize=11)
     ax.legend(fontsize=10)

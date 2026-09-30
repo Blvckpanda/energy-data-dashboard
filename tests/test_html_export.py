@@ -7,7 +7,6 @@ and Invariant 6 (same-day files never overwrite each other).
 
 import pytest
 
-import config
 import html_export
 
 
