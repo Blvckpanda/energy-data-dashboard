@@ -162,42 +162,17 @@ def _write_summary(
     cell.alignment = Alignment(wrap_text=True, vertical="top")
 
     # ── Component 2: Headline statistics table (rows 5 onward) ──────
-    stats = results["stats"]
-    efficiency_df = results["efficiency"]
-    ratio_col = cfg["ratio_name"]
-    primary = cfg["primary_power_col"]
-    secondary = cfg["secondary_col"]
+    # Rows come from the shared builder in narrative.py — identical
+    # row set and order as the HTML report's table
+    stats_table = narrative.build_headline_stats(
+        results, clean_df, cfg, run_ids
+    )
 
-    # Plain-English labels come straight from the registry
-    primary_label = cfg["primary_label"]
-    secondary_label = cfg["secondary_label"]
-    ratio_label = f"Mean {cfg['ratio_label']} (%)"
-
-    stats_table = [
-        ("Metric", "Value"),
-        (f"Mean {primary_label}",
-         round(stats.loc["mean", primary], 2)),
-        (f"Max {primary_label}",
-         round(stats.loc["max", primary], 2)),
-        (f"Std Dev {primary_label}",
-         round(stats.loc["std", primary], 2)),
-        (f"Mean {secondary_label}",
-         round(stats.loc["mean", secondary], 2)),
-        (f"Max {secondary_label}",
-         round(stats.loc["max", secondary], 2)),
-        (ratio_label,
-         round(efficiency_df[ratio_col].mean() * 100, 2)),
-        ("Total Rows Analysed", len(efficiency_df)),
-        ("Rows Excluded from Analysis",
-         len(clean_df) - len(efficiency_df)),
-    ]
-
-    if len(run_ids) > 1:
-        stats_table.append(("Source Files Processed", len(run_ids)))
-
-    for row_idx, (label, value) in enumerate(stats_table, start=5):
-        ws.cell(row=row_idx, column=1, value=label)
-        ws.cell(row=row_idx, column=2, value=value)
+    ws.cell(row=5, column=1, value="Metric")
+    ws.cell(row=5, column=2, value="Value")
+    for offset, (label, value) in enumerate(stats_table, start=1):
+        ws.cell(row=5 + offset, column=1, value=label)
+        ws.cell(row=5 + offset, column=2, value=value)
 
     # Style the header row (row 5)
     _style_header_row(ws, row_num=5, col_count=2)

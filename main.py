@@ -30,6 +30,29 @@ import html_export
 import ingest
 import visualise
 
+# The single definition of the post-clean stage sequence. main drives
+# it via _run_pipeline; tests drive it via conftest's wind_harness so
+# the tested chain can never drift from the shipped chain.
+POST_CLEAN_STAGES = (analyse.analyse, detect.detect, visualise.visualise)
+
+
+def _print_clean_summary(rows_before: int, rows_after: int) -> None:
+    """
+    Print the [CLEAN] stage summary line shared by both run modes.
+
+    Parameters:
+        rows_before (int): row count before cleaning
+        rows_after (int): row count after cleaning
+
+    Returns:
+        None
+    """
+    dropped = rows_before - rows_after
+    print(
+        f"[CLEAN] {rows_before:,} rows in → "
+        f"{rows_after:,} rows clean ({dropped:,} dropped)"
+    )
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
@@ -129,9 +152,7 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     try:
         rows_before = len(raw_df)
         clean_df, run_id = clean.clean(raw_df, schema)
-        rows_after = len(clean_df)
-        dropped = rows_before - rows_after
-        print(f"[CLEAN] {rows_before:,} rows in → {rows_after:,} rows clean ({dropped:,} dropped)")
+        _print_clean_summary(rows_before, len(clean_df))
     except SystemExit:
         raise
     except Exception as e:
@@ -204,12 +225,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
         try:
             rows_before = len(raw_df)
             clean_df, run_id = clean.clean(raw_df, schema)
-            rows_after = len(clean_df)
-            dropped = rows_before - rows_after
-            print(
-                f"[CLEAN] {rows_before:,} rows in → "
-                f"{rows_after:,} rows clean ({dropped:,} dropped)"
-            )
+            _print_clean_summary(rows_before, len(clean_df))
             run_ids.append(run_id)
         except SystemExit as e:
             print(f"[SKIP] {csv_path.name} — {e}")
@@ -277,9 +293,11 @@ def _run_pipeline(
     # Single run-ID normalisation point for the whole pipeline
     run_ids: list[str] = [run_id] if isinstance(run_id, str) else list(run_id)
 
+    analyse_fn, detect_fn, visualise_fn = POST_CLEAN_STAGES
+
     # ── ANALYSE ───────────────────────────────────────────────────
     try:
-        results = analyse.analyse(df, schema)
+        results = analyse_fn(df, schema)
         print("[ANALYSE]")
         for key, result_df in results.items():
             print(f"\n--- {key} ({len(result_df)} rows) ---")
@@ -291,7 +309,7 @@ def _run_pipeline(
 
     # ── DETECT ────────────────────────────────────────────────────
     try:
-        results["anomalies"] = detect.detect(df, schema)
+        results["anomalies"] = detect_fn(df, schema)
     except SystemExit:
         raise
     except Exception as e:
@@ -299,7 +317,7 @@ def _run_pipeline(
 
     # ── VISUALISE ─────────────────────────────────────────────────
     try:
-        chart_paths = visualise.visualise(results, schema, charts_dir=charts_dir)
+        chart_paths = visualise_fn(results, schema, charts_dir=charts_dir)
         print("[VISUALISE]")
         for path in chart_paths:
             print(f"  Chart saved → {path}")

@@ -56,7 +56,7 @@ def export_html(
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     narrative_text = narrative.build_narrative(results, clean_df, schema)
-    stats_html = _render_stats_table(results, cfg)
+    stats_html = _render_stats_table(results, clean_df, cfg, run_ids)
     anomaly_html = _render_anomaly_summary(results)
     quality_html = _render_quality_note(run_ids)
     images_b64 = [_encode_image(p) for p in chart_paths]
@@ -167,39 +167,48 @@ def _encode_image(path: Path) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def _render_stats_table(results: dict, cfg: dict) -> str:
+def _render_stats_table(
+    results: dict,
+    clean_df: pd.DataFrame,
+    cfg: dict,
+    run_ids: list[str] | None,
+) -> str:
     """
     Build an HTML table of headline statistics.
 
+    Rows come from the shared builder in narrative.py — identical
+    row set and order as the Excel Summary sheet; only the value
+    formatting differs (percent-suffixed ratio, thousands-comma
+    counts).
+
     Parameters:
         results (dict): analysis results dict
-        cfg (dict): schema config from SCHEMA_REGISTRY — supplies
-                    the plain-English labels
+        clean_df (pd.DataFrame): the clean DataFrame for this run
+        cfg (dict): schema config from SCHEMA_REGISTRY
+        run_ids (list[str] | None): normalised run IDs; more than
+            one adds the Source Files Processed row
 
     Returns:
         str: HTML <tr> rows for the statistics table body
     """
-    stats = results["stats"]
-    efficiency = results["efficiency"]
-    ratio_col = cfg["ratio_name"]
+    ratio_rows = {
+        label: value
+        for label, value in narrative.build_headline_stats(
+            results, clean_df, cfg, run_ids
+        )
+    }
+    ratio_label = f"Mean {cfg['ratio_label']}"
 
-    # Plain-English labels come straight from the registry
-    primary_label = cfg["primary_label"]
-    ratio_label = cfg["ratio_label"]
+    def _fmt(label: str, value: float | int) -> str:
+        if label == ratio_label:
+            return f"{value:.1f}%"
+        if isinstance(value, int) and value >= 1000:
+            return f"{value:,}"
+        return f"{value:g}"
 
-    rows = [
-        (f"Mean {primary_label}",
-         f"{stats.loc['mean', cfg['primary_power_col']]:.2f}"),
-        (f"Max {primary_label}",
-         f"{stats.loc['max', cfg['primary_power_col']]:.2f}"),
-        (f"Mean {ratio_label}",
-         f"{efficiency[ratio_col].mean() * 100:.1f}%"),
-        ("Total Rows Analysed",
-         f"{len(efficiency):,}"),
-    ]
     return "".join(
-        f"<tr><td>{label}</td><td>{value}</td></tr>"
-        for label, value in rows
+        f"<tr><td>{label}</td><td>{_fmt(label, value)}</td></tr>"
+        for label, value in ratio_rows.items()
     )
 
 
