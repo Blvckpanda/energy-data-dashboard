@@ -6,10 +6,9 @@ Accepts a clean DataFrame from clean.py and returns a named dict
 of result DataFrames covering summary statistics, power curve
 efficiency, time-series aggregations, and distribution analysis.
 
-Schema-aware: column names and ratios come from
-config.SCHEMA_REGISTRY. No schema-specific branching except in
-_compute_distribution, where the analysis method differs in kind
-between wind (direction bins) and solar (source-key aggregation).
+Schema-aware: column names, ratios, and the distribution analysis
+come from config.SCHEMA_REGISTRY. Dispatch keys off registry values
+(never schema names), so a new schema needs only a registry entry.
 
 No files are written by this module. No output is produced.
 All results are returned in memory for use by visualise.py
@@ -17,6 +16,7 @@ and export.py.
 """
 
 import pandas as pd
+
 import config
 
 
@@ -28,7 +28,8 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         df (pd.DataFrame): clean DataFrame from clean.clean().
                            Must have datetime64 dtype on the datetime
                            column and float64 on all numeric columns.
-        schema (str): "wind" or "solar" — selects column config from
+        schema (str): a schema name from config.SCHEMA_REGISTRY —
+                      selects column config from
                       config.SCHEMA_REGISTRY
 
     Returns:
@@ -37,6 +38,9 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
             'efficiency'   — per-row efficiency/conversion ratio
             'monthly'      — monthly mean primary power
             'daily'        — daily total primary power
+            'daily_mean'   — daily mean primary power (anomaly
+                             timeline baseline, same units as the
+                             raw rows plotted over it)
             'distribution' — schema-specific distribution analysis
 
     Assumptions:
@@ -50,7 +54,8 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         "efficiency":   _compute_efficiency(df, cfg),
         "monthly":      _compute_monthly(df, cfg),
         "daily":        _compute_daily(df, cfg),
-        "distribution": _compute_distribution(df, schema),
+        "daily_mean":   _compute_daily_mean(df, cfg),
+        "distribution": _compute_distribution(df, cfg),
     }
 
 
@@ -73,8 +78,8 @@ def _compute_efficiency(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """
     Compute per-row efficiency or conversion ratio.
 
-    Wind: efficiency_ratio = active_power / theoretical_power
-    Solar: conversion_ratio = AC_POWER / DC_POWER
+    The ratio is primary_power_col / reference_col, with the column
+    choice and exclusion thresholds coming from the schema registry.
 
     Non-operational rows (reference <= min_reference or
     primary <= min_primary) are excluded before calculation.
@@ -163,64 +168,98 @@ def _compute_daily(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     )
 
 
-def _compute_distribution(df: pd.DataFrame, schema: str) -> pd.DataFrame:
+def _compute_daily_mean(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """
-    Compute schema-specific distribution analysis.
+    Resample primary power to daily mean.
 
-    Wind: wind direction frequency across 16 compass bins.
-    Solar: mean and count of AC_POWER per inverter (SOURCE_KEY).
+    Mirrors _compute_monthly at day frequency. The anomaly timeline
+    chart plots this series instead of daily totals so instantaneous
+    anomaly points share the same units and magnitude as the line
+    they are drawn over.
+
+    Parameters:
+        df (pd.DataFrame): clean SCADA DataFrame with datetime64
+                           datetime column
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        pd.DataFrame: daily mean primary power.
+                      DatetimeIndex at day frequency ('D').
+    """
+    return (
+        df.set_index(cfg["datetime_col"])[cfg["primary_power_col"]]
+        .resample("D")
+        .mean()
+        .to_frame()
+    )
+
+
+def _compute_distribution(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """
+    Compute the schema's distribution analysis, dispatched on the
+    registry's distribution kind — not on the schema name.
+
+    Kinds:
+        "bins"       — frequency count of a numeric column across
+                       fixed bin edges (e.g. wind-direction compass
+                       segments, hydro flow-rate bands)
+        "group_mean" — mean and count of one value column grouped by
+                       another (e.g. AC power per inverter)
 
     Parameters:
         df (pd.DataFrame): clean SCADA DataFrame
-        schema (str): "wind" or "solar"
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
 
     Returns:
         pd.DataFrame: distribution results
     """
-    if schema == "wind":
-        return _compute_wind_bins(df)
-    elif schema == "solar":
-        return _compute_source_key_distribution(df)
+    spec = cfg["distribution"]
+    if spec["kind"] == "bins":
+        return _compute_binned_distribution(df, spec)
+    return _compute_group_mean_distribution(df, spec)
 
 
-def _compute_wind_bins(df: pd.DataFrame) -> pd.DataFrame:
+def _compute_binned_distribution(
+    df: pd.DataFrame, spec: dict
+) -> pd.DataFrame:
     """
-    Bin wind direction into 16 compass segments and count frequency.
-
-    Bins are 22.5° wide, covering 0–360° (16 bins total),
-    as defined by config.WIND_DIRECTION_BINS.
+    Frequency count of a numeric column across fixed bins.
 
     Parameters:
         df (pd.DataFrame): clean SCADA DataFrame
+        spec (dict): distribution spec with 'col' and 'bins' keys
 
     Returns:
-        pd.DataFrame: frequency count per wind direction bin.
+        pd.DataFrame: frequency count per bin.
                       Index: bin interval labels.
                       Column: 'count' (int64).
-                      Exactly 16 rows.
+                      One row per bin.
     """
     bins = pd.cut(
-        df[config.COL_WIND_DIRECTION],
-        bins=config.WIND_DIRECTION_BINS,
+        df[spec["col"]],
+        bins=spec["bins"],
         right=True,
     )
     result = bins.value_counts(sort=False).to_frame(name="count")
-    result.index.name = "wind_direction_bin"
+    result.index.name = f"{spec['col']}_bin"
     return result
 
 
-def _compute_source_key_distribution(df: pd.DataFrame) -> pd.DataFrame:
+def _compute_group_mean_distribution(
+    df: pd.DataFrame, spec: dict
+) -> pd.DataFrame:
     """
-    Mean and count of AC_POWER per inverter (SOURCE_KEY).
+    Mean and count of a value column per group of a grouping column.
 
     Parameters:
-        df (pd.DataFrame): clean SCADA DataFrame with COL_SOURCE_KEY
-                           and COL_AC_POWER columns
+        df (pd.DataFrame): clean SCADA DataFrame
+        spec (dict): distribution spec with 'group_col' and
+                     'value_col' keys
 
     Returns:
-        pd.DataFrame: index=SOURCE_KEY, columns=['mean', 'count']
+        pd.DataFrame: index=group values, columns=['mean', 'count']
     """
     return (
-        df.groupby(config.COL_SOURCE_KEY)[config.COL_AC_POWER]
+        df.groupby(spec["group_col"])[spec["value_col"]]
         .agg(["mean", "count"])
     )

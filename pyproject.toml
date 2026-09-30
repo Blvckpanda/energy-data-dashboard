@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+# Make root-level pipeline modules (config, analyse, …) importable
+# regardless of how pytest is invoked — bare `pytest` does NOT put
+# the CWD on sys.path the way `python -m pytest` does, which broke
+# CI collection while local runs passed.
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# matplotlib requires .use("Agg") before pyplot import (headless backend)
+"visualise.py" = ["E402"]

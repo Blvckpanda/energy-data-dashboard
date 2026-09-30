@@ -10,6 +10,13 @@
 - Do not mix unrelated concerns in one function or module.
 - Explicit over implicit. If something is dropped, coerced, or
   skipped — print it to the terminal and record it in the log.
+- Never mutate a caller's DataFrame; return new frames or work on
+  an explicit `.copy()` (tests assert non-mutation for analyse and
+  detect).
+- `ruff check .` must pass (E/F/W/I, line-length 100) — it gates
+  CI. The only per-file exemption is E402 in `visualise.py` for
+  matplotlib's Agg-before-pyplot ordering, documented in
+  `pyproject.toml`.
 
 ## Python
 
@@ -39,7 +46,7 @@
   - `export.py` and `visualise.py` functions write to `output/`
   Both are documented in their respective module docstrings.
 
-## Configuration
+## Configuration and the Schema Registry
 
 - All column names, file paths, numeric thresholds, date format
   strings, and log field names live in `config.py` only.
@@ -49,6 +56,13 @@
   reference the constant. Never the other way around.
 - Do not rename existing constants without updating every reference
   across all modules.
+- Every per-schema behaviour is a registry key — labels, display
+  names, `interval_minutes`, `scatter_reference`, and the
+  `distribution` spec. Modules must not branch on schema names; a
+  new schema is a registry entry plus column constants and nothing
+  else. Registry integrity is enforced by `tests/test_config.py`.
+- CLI choices (`--schema`) derive from `SCHEMA_REGISTRY.keys()` —
+  never a literal list.
 
 ## Quality Log Standards
 
@@ -71,7 +85,8 @@
 - Use `argparse` for all CLI argument handling. Do not read
   `sys.argv` directly outside of `main.py`.
 - Print stage markers in this exact format:
-  `[LOAD]`, `[CLEAN]`, `[ANALYSE]`, `[EXPORT]`
+  `[LOAD]`, `[CLEAN]`, `[ANALYSE]`, `[DETECT]`, `[VISUALISE]`,
+  `[EXPORT]`; batch mode adds `[BATCH]` and `[SKIP]` lines.
 - Print counts on a single line immediately after each stage:
   `[CLEAN] 52,608 rows in → 51,943 rows clean (665 dropped)`
 - Print the full output path on successful completion:
@@ -96,15 +111,18 @@
 
 ## Efficiency Calculations
 
-- Before computing any efficiency ratio, filter the working DataFrame
-  to operational rows only:
-  `df = df[(df[config.COL_THEORETICAL] > 0) & (df[config.COL_ACTIVE_POWER] > 0)]`
+- Before computing any efficiency/conversion ratio, filter the
+  working DataFrame to operational rows using the registry
+  minimums: primary power > `min_primary` AND reference >
+  `min_reference` (both zero, exclusive, for every current schema).
 - Do not replace zero values with NaN or a sentinel — exclude the
   rows entirely so they cannot affect any downstream statistic.
 - Print the excluded count immediately after filtering:
   `[ANALYSE] N rows excluded from efficiency (zero theoretical or non-positive output)`
 - Never compute a ratio on a DataFrame that has not had this filter
   applied.
+- Operational hours in narratives derive from the registry's
+  `interval_minutes` — never a hardcoded 10-minute assumption.
 
 ## Summary Sheet Narrative
 
@@ -122,18 +140,26 @@
 
 ## File Organisation
 
-- `main.py` — Project root. Entry point only.
+- `main.py` — Project root. Entry point and pipeline boundary.
 - `ingest.py` — Project root. Load and validate.
 - `clean.py` — Project root. Clean and log.
 - `analyse.py` — Project root. Statistics and aggregations.
+- `detect.py` — Project root. Anomaly detection.
 - `visualise.py` — Project root. Chart generation.
 - `export.py` — Project root. Excel assembly.
-- `config.py` — Project root. All constants. No logic.
-- `context/` — All `.md` reference documents. Never modified
+- `html_export.py` — Project root. HTML report assembly.
+- `narrative.py` — Project root. Shared narrative builder.
+- `config.py` — Project root. All constants + SCHEMA_REGISTRY. No logic.
+- `pyproject.toml` — Project root. ruff configuration.
+- `context/` — Living `.md` reference documents. Never modified
   by the pipeline.
+- `docs/archive/` — Historical build documents (unit specs,
+  retired workflow rules, the original progress tracker).
 - `data/` — Input CSVs only. Never written to.
-- `output/` — Generated `.xlsx` reports.
+- `output/` — Generated `.xlsx` / `.html` reports.
 - `output/charts/` — Generated `.png` chart figures.
 - `logs/` — `data_quality.log`. Append-only.
-- `requirements.txt` — Project root. Pinned dependencies.
+- `requirements.txt` / `requirements-dev.txt` — Pinned runtime /
+  dev dependencies.
 - `README.md` — Project root. Usage documentation.
+- `LICENSE` — Project root. MIT.

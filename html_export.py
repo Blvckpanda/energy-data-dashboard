@@ -7,14 +7,20 @@ base64 data URIs — no external CSS, JS, or image file dependencies.
 The file opens correctly offline and is safe to share as a single
 attachment or deploy to GitHub Pages.
 
+Fully schema-agnostic: statistics labels and the report title come
+from config.SCHEMA_REGISTRY — adding a schema requires no changes
+here.
+
 Side effect: writes one .html file to the output directory.
 """
 
 import base64
-from pathlib import Path
+import csv
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
+
 import config
 import narrative
 
@@ -25,6 +31,7 @@ def export_html(
     chart_paths: list[Path],
     schema: str,
     output_dir: Path,
+    run_ids: list[str] | None = None,
 ) -> Path:
     """
     Generate and save the self-contained HTML report.
@@ -33,8 +40,13 @@ def export_html(
         clean_df (pd.DataFrame): clean DataFrame for this run
         results (dict): analysis results, including 'anomalies'
         chart_paths (list[Path]): four chart .png paths from visualise()
-        schema (str): "wind" or "solar"
+        schema (str): a schema name from config.SCHEMA_REGISTRY
         output_dir (Path): directory to write the report to
+        run_ids (list[str] | None): run UUIDs, normalised to a list at
+            the pipeline boundary (main._run_pipeline) — one for
+            single-file runs, one per file for batch runs. Used to
+            include this run's quality-log entries as the report's
+            Data Quality note. None omits the section.
 
     Returns:
         Path: path to the saved .html file
@@ -46,6 +58,7 @@ def export_html(
     narrative_text = narrative.build_narrative(results, clean_df, schema)
     stats_html = _render_stats_table(results, cfg)
     anomaly_html = _render_anomaly_summary(results)
+    quality_html = _render_quality_note(run_ids)
     images_b64 = [_encode_image(p) for p in chart_paths]
 
     chart_titles = [
@@ -56,15 +69,82 @@ def export_html(
     ]
 
     html = _build_html(
-        narrative_text, stats_html, anomaly_html,
+        narrative_text, stats_html, anomaly_html, quality_html,
         images_b64, chart_titles, schema,
     )
 
-    filename = f"report_{date.today().isoformat()}.html"
-    out_path = output_dir / filename
+    base_filename = f"report_{date.today().isoformat()}.html"
+    out_path = output_dir / base_filename
+
+    # Unique-per-day filenames — Invariant 6: never overwrite a
+    # previous report (same counter pattern as export.py)
+    counter = 1
+    while out_path.exists():
+        filename = f"report_{date.today().isoformat()}_{counter}.html"
+        out_path = output_dir / filename
+        counter += 1
+
     out_path.write_text(html, encoding="utf-8")
 
     return out_path
+
+
+def _render_quality_note(run_ids: list[str] | None) -> str:
+    """
+    Build the Data Quality note: cleaning decisions logged for the
+    given run IDs, grouped by issue type and action taken.
+
+    Parameters:
+        run_ids (list[str] | None): current run UUIDs. None or empty
+            yields a note saying no log data is attached.
+
+    Returns:
+        str: HTML block, either a summary table or a plain paragraph
+    """
+    run_ids = run_ids or []
+    if not run_ids or not config.LOG_PATH.exists():
+        return "<p>No data quality log entries are attached to this report.</p>"
+
+    with open(config.LOG_PATH, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = [
+            r for r in reader
+            if r.get(config.LOG_FIELD_RUN_ID) in run_ids
+            and int(r.get(config.LOG_FIELD_ROW_COUNT, 0) or 0) > 0
+        ]
+
+    if not rows:
+        return (
+            "<p>Data quality checks ran for this report; no cleaning "
+            "actions were required — all rows passed validation.</p>"
+        )
+
+    counts: dict[tuple[str, str], int] = {}
+    for r in rows:
+        key = (r[config.LOG_FIELD_ISSUE_TYPE], r[config.LOG_FIELD_ACTION_TAKEN])
+        counts[key] = counts.get(key, 0) + int(r[config.LOG_FIELD_ROW_COUNT])
+
+    action_labels = {
+        "dropped": "rows dropped",
+        "filled_median": "values filled with column median",
+        "coerced": "values coerced to numeric",
+        "flagged": "rows flagged for review",
+    }
+    issue_labels = {
+        "duplicate": "duplicate rows",
+        "null": "missing values",
+        "type_coercion": "non-numeric entries",
+        "date_parse_failure": "date parsing failures",
+    }
+    rows_html = "".join(
+        f"<tr><td>{issue_labels.get(issue, issue)}</td>"
+        f"<td>{count:,} {action_labels.get(action, action)}</td></tr>"
+        for (issue, action), count in sorted(counts.items())
+    )
+    return (
+        "<table><thead><tr><th>Cleaning Check</th>"
+        f"<th>Rows Affected</th></tr></thead><tbody>{rows_html}</tbody></table>"
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────
@@ -93,7 +173,8 @@ def _render_stats_table(results: dict, cfg: dict) -> str:
 
     Parameters:
         results (dict): analysis results dict
-        cfg (dict): schema config from SCHEMA_REGISTRY
+        cfg (dict): schema config from SCHEMA_REGISTRY — supplies
+                    the plain-English labels
 
     Returns:
         str: HTML <tr> rows for the statistics table body
@@ -102,16 +183,9 @@ def _render_stats_table(results: dict, cfg: dict) -> str:
     efficiency = results["efficiency"]
     ratio_col = cfg["ratio_name"]
 
-    # Use plain-English labels
-    if cfg["primary_power_col"] == config.COL_ACTIVE_POWER:
-        primary_label = "Active Power (kW)"
-    else:
-        primary_label = "AC Power (kW)"
-
-    if cfg["ratio_name"] == "efficiency_ratio":
-        ratio_label = "Efficiency"
-    else:
-        ratio_label = "Conversion Ratio"
+    # Plain-English labels come straight from the registry
+    primary_label = cfg["primary_label"]
+    ratio_label = cfg["ratio_label"]
 
     rows = [
         (f"Mean {primary_label}",
@@ -157,6 +231,7 @@ def _build_html(
     narrative_text: str,
     stats_rows_html: str,
     anomaly_html: str,
+    quality_html: str,
     images_b64: list[str],
     chart_titles: list[str],
     schema: str,
@@ -168,14 +243,16 @@ def _build_html(
         narrative_text (str): narrative paragraph
         stats_rows_html (str): <tr> rows for the stats table
         anomaly_html (str): anomaly summary HTML block
+        quality_html (str): data quality note HTML block
         images_b64 (list[str]): base64 data URIs, one per chart
         chart_titles (list[str]): plain-English titles, same order
-        schema (str): "wind" or "solar" — used in the page title
+        schema (str): active schema name — used via the registry's
+                      asset_label in the page title
 
     Returns:
         str: complete, valid, self-contained HTML document
     """
-    schema_label = "Wind Turbine" if schema == "wind" else "Solar Power"
+    schema_label = config.SCHEMA_REGISTRY[schema]["asset_label"]
     charts_html = "".join(
         f'<div class="chart"><h3>{title}</h3><img src="{img}" alt="{title}"></div>'
         for title, img in zip(chart_titles, images_b64)
@@ -211,6 +288,9 @@ def _build_html(
 
   <h2>Anomaly Summary</h2>
   {anomaly_html}
+
+  <h2>Data Quality</h2>
+  {quality_html}
 
   <h2>Charts</h2>
   {charts_html}

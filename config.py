@@ -8,7 +8,7 @@ and log field names. Contains no logic. Imported by all other modules.
 
 from pathlib import Path
 
-# ── SCADA Column Names ────────────────────────────────────────────
+# ── Wind Turbine SCADA Column Names ───────────────────────────────
 COL_DATETIME       = "Date/Time"
 COL_ACTIVE_POWER   = "LV ActivePower (kW)"
 COL_WIND_SPEED     = "Wind Speed (m/s)"
@@ -22,7 +22,7 @@ CRITICAL_COLUMNS = [COL_DATETIME, COL_ACTIVE_POWER]
 MEDIAN_FILL_COLUMNS = [COL_WIND_SPEED, COL_THEORETICAL, COL_WIND_DIRECTION]
 
 # ── Date Parsing ──────────────────────────────────────────────────
-# Primary format expected in the SCADA CSV (10-minute intervals)
+# Primary format expected in the wind SCADA CSV (10-minute intervals)
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # ── File Paths ────────────────────────────────────────────────────
@@ -51,7 +51,8 @@ LOG_FIELDS = [
 ]
 
 # ── Analysis Thresholds ───────────────────────────────────────────
-# Number of compass bins for wind direction distribution
+# Number of compass bins for wind direction distribution (consumed
+# via SCHEMA_REGISTRY['wind']['distribution']['bins'])
 WIND_DIRECTION_BINS = 16
 
 # Rows excluded from efficiency if either condition is true:
@@ -77,7 +78,53 @@ SOLAR_MEDIAN_FILL_COLUMNS = [COL_DC_POWER, COL_DAILY_YIELD, COL_TOTAL_YIELD]
 CONVERSION_MIN_DC = 0   # exclusive — DC_POWER > 0 required (daylight)
 CONVERSION_MIN_AC = 0   # exclusive — AC_POWER > 0 required
 
+# ── Hydro SCADA Column Names ────────────────────────────────────────
+COL_HYDRO_DATETIME          = "Timestamp"
+COL_HYDRO_FLOW              = "Water_Flow_Rate (m3/s)"
+COL_HYDRO_GENERATED_POWER   = "Generated_Power (kW)"
+COL_HYDRO_THEORETICAL_POWER = "Theoretical_Potential (kW)"
+
+HYDRO_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+HYDRO_CRITICAL_COLUMNS   = [COL_HYDRO_DATETIME, COL_HYDRO_GENERATED_POWER]
+HYDRO_MEDIAN_FILL_COLUMNS = [
+    COL_HYDRO_FLOW, COL_HYDRO_THEORETICAL_POWER,
+]
+
+HYDRO_MIN_GENERATED  = 0  # exclusive — Generated_Power > 0 required
+HYDRO_MIN_THEORETICAL = 0  # exclusive — Theoretical_Potential > 0 required
+
 # ── Schema Registry ────────────────────────────────────────────────
+# Adding a new schema requires ONLY a column-constant block above and
+# one registry entry here. Pipeline modules derive everything else —
+# CLI choices, labels, headers, scatter references, narrative
+# sentences, and analysis intervals — from this dict.
+#
+# Registry keys:
+#   required_columns     columns the CSV must contain
+#   datetime_col         parsed to datetime64 during cleaning
+#   date_format          primary parse format ('mixed' is the fallback)
+#   critical_columns     rows with nulls here are dropped
+#   median_fill_columns  nulls here are filled with the column median
+#   primary_power_col    output metric (efficiency numerator)
+#   secondary_col        scatter x-axis metric
+#   reference_col        efficiency denominator
+#   ratio_name           results-dict key for the per-row ratio
+#   min_primary          primary must be > this to be operational
+#   min_reference        reference must be > this to be operational
+#   primary_label / secondary_label   plain-English chart labels
+#   ratio_label          plain-English label for the mean ratio
+#   asset_label          report title fragment, e.g. "Wind Turbine"
+#   display_names        raw column -> plain-English sheet header
+#   interval_minutes     minutes per SCADA row (operational-hours math)
+#   scatter_reference    "column"  — plot reference_col as the curve
+#                        "identity" — plot an ideal 1:1 y=x line
+#   distribution         how the distribution analysis works:
+#                        {"kind": "bins", "col", "bins"}      (fixed
+#                        numeric binning of one column) or
+#                        {"kind": "group_mean", "group_col",
+#                         "value_col"}                         (mean
+#                        of one value per group of another)
 SCHEMA_REGISTRY = {
     "wind": {
         "required_columns": [
@@ -94,6 +141,24 @@ SCHEMA_REGISTRY = {
         "ratio_name":           "efficiency_ratio",
         "min_primary":          EFFICIENCY_MIN_ACTIVE_POWER,
         "min_reference":        EFFICIENCY_MIN_THEORETICAL,
+        "primary_label":        "Active Power (kW)",
+        "secondary_label":      "Wind Speed (m/s)",
+        "ratio_label":          "Efficiency",
+        "asset_label":          "Wind Turbine",
+        "display_names": {
+            COL_DATETIME:       "Timestamp",
+            COL_ACTIVE_POWER:   "Active Power (kW)",
+            COL_WIND_SPEED:     "Wind Speed (m/s)",
+            COL_THEORETICAL:    "Theoretical Power (kWh)",
+            COL_WIND_DIRECTION: "Wind Direction (°)",
+        },
+        "interval_minutes":     10,
+        "scatter_reference":    "column",
+        "distribution": {
+            "kind": "bins",
+            "col":  COL_WIND_DIRECTION,
+            "bins": WIND_DIRECTION_BINS,
+        },
     },
     "solar": {
         "required_columns": [
@@ -110,6 +175,59 @@ SCHEMA_REGISTRY = {
         "ratio_name":           "conversion_ratio",
         "min_primary":          CONVERSION_MIN_AC,
         "min_reference":        CONVERSION_MIN_DC,
+        "primary_label":        "AC Power (kW)",
+        "secondary_label":      "DC Power (kW)",
+        "ratio_label":          "Conversion Ratio",
+        "asset_label":          "Solar Power",
+        "display_names": {
+            COL_SOLAR_DATETIME: "Timestamp",
+            COL_PLANT_ID:       "Plant ID",
+            COL_SOURCE_KEY:     "Inverter ID",
+            COL_DC_POWER:       "DC Power (kW)",
+            COL_AC_POWER:       "AC Power (kW)",
+            COL_DAILY_YIELD:    "Daily Yield (kWh)",
+            COL_TOTAL_YIELD:    "Total Yield (kWh)",
+        },
+        "interval_minutes":     15,
+        "scatter_reference":    "identity",
+        "distribution": {
+            "kind":       "group_mean",
+            "group_col":  COL_SOURCE_KEY,
+            "value_col":  COL_AC_POWER,
+        },
+    },
+    "hydro": {
+        "required_columns": [
+            COL_HYDRO_DATETIME, COL_HYDRO_FLOW,
+            COL_HYDRO_GENERATED_POWER, COL_HYDRO_THEORETICAL_POWER,
+        ],
+        "datetime_col":         COL_HYDRO_DATETIME,
+        "date_format":          HYDRO_DATE_FORMAT,
+        "critical_columns":     HYDRO_CRITICAL_COLUMNS,
+        "median_fill_columns":  HYDRO_MEDIAN_FILL_COLUMNS,
+        "primary_power_col":    COL_HYDRO_GENERATED_POWER,
+        "secondary_col":        COL_HYDRO_FLOW,
+        "reference_col":        COL_HYDRO_THEORETICAL_POWER,
+        "ratio_name":           "conversion_ratio",
+        "min_primary":          HYDRO_MIN_GENERATED,
+        "min_reference":        HYDRO_MIN_THEORETICAL,
+        "primary_label":        "Generated Power (kW)",
+        "secondary_label":      "Water Flow Rate (m³/s)",
+        "ratio_label":          "Conversion Ratio",
+        "asset_label":          "Hydro Turbine",
+        "display_names": {
+            COL_HYDRO_DATETIME:          "Timestamp",
+            COL_HYDRO_FLOW:              "Water Flow Rate (m³/s)",
+            COL_HYDRO_GENERATED_POWER:   "Generated Power (kW)",
+            COL_HYDRO_THEORETICAL_POWER: "Theoretical Potential (kW)",
+        },
+        "interval_minutes":     10,
+        "scatter_reference":    "column",
+        "distribution": {
+            "kind": "bins",
+            "col":  COL_HYDRO_FLOW,
+            "bins": 12,
+        },
     },
 }
 

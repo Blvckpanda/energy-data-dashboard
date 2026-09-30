@@ -7,8 +7,10 @@ present before returning a raw DataFrame. Does not clean or transform
 data.
 """
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 import config
 
 
@@ -47,7 +49,8 @@ def validate_schema(df: pd.DataFrame, schema: str) -> None:
 
     Parameters:
         df (pd.DataFrame): Raw DataFrame to validate.
-        schema (str): "wind" or "solar" — selects the required column
+        schema (str): a schema name from config.SCHEMA_REGISTRY —
+                      selects the required column
                       list from config.SCHEMA_REGISTRY.
 
     Returns:
