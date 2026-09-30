@@ -1,3 +1,10 @@
+[tool.pytest.ini_options]
+# Make root-level pipeline modules (config, analyse, …) importable
+# regardless of how pytest is invoked — bare `pytest` does NOT put
+# the CWD on sys.path the way `python -m pytest` does, which broke
+# CI collection while local runs passed.
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
