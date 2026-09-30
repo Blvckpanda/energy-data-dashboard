@@ -9,11 +9,9 @@ Kaggle datasets being present in data/.
 import pandas as pd
 import pytest
 
-import analyse
 import clean
 import config
-import detect
-import visualise
+import main
 
 
 @pytest.fixture
@@ -76,13 +74,17 @@ def wind_harness(tmp_path, monkeypatch):
     Isolated pipeline harness for report tests.
 
     Redirects CHARTS_DIR and LOG_PATH into tmp_path, then returns a
-    build(df) callable that runs clean → analyse → detect → visualise
-    and returns (clean_df, run_id, results, chart_paths), plus the
-    tmp output_dir and charts_dir paths.
+    build(df) callable that runs clean followed by main's own
+    POST_CLEAN_STAGES chain — analyse → detect → visualise. Driving
+    the same stage sequence the CLI drives means the tested chain
+    cannot drift from the shipped one; adding a stage to
+    main.POST_CLEAN_STAGES is automatically covered here.
 
     Returns:
         tuple: (build, output_dir, charts_dir) where
-               build(df, schema="wind") runs the pre-export stages
+               build(df, schema="wind") runs clean + post-clean
+               stages and returns
+               (clean_df, run_id, results, chart_paths)
     """
     output_dir = tmp_path / "output"
     charts_dir = output_dir / "charts"
@@ -92,9 +94,13 @@ def wind_harness(tmp_path, monkeypatch):
 
     def build(df: pd.DataFrame, schema: str = "wind") -> tuple:
         clean_df, run_id = clean.clean(df, schema=schema)
-        results = analyse.analyse(clean_df, schema=schema)
-        results["anomalies"] = detect.detect(clean_df, schema=schema)
-        chart_paths = visualise.visualise(results, schema, charts_dir=charts_dir)
+        results = main.POST_CLEAN_STAGES[0](clean_df, schema=schema)
+        results["anomalies"] = main.POST_CLEAN_STAGES[1](
+            clean_df, schema=schema
+        )
+        chart_paths = main.POST_CLEAN_STAGES[2](
+            results, schema, charts_dir=charts_dir
+        )
         return clean_df, run_id, results, chart_paths
 
     return build, output_dir, charts_dir

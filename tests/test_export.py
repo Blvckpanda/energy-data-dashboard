@@ -109,3 +109,28 @@ def test_anomaly_report_sheet_has_flagged_rows(built):
     wb = openpyxl.load_workbook(path)
     ws = wb["Anomaly Report"]
     assert ws.max_row >= 1  # header present; flagged rows when anomalies exist
+
+
+def test_headline_stats_match_shared_builder(built):
+    """The Excel Summary rows are exactly narrative's shared rows —
+    one definition of the headline table for both report formats."""
+    import narrative
+
+    clean_df, run_id, results, chart_paths, output_dir = built
+    path = export.export(clean_df, results, chart_paths, run_id, output_dir, "wind")
+    wb = openpyxl.load_workbook(path)
+    ws = wb["Summary"]
+
+    # Header row is 5; data rows start at 6. Stop at the first blank
+    # row — cells below the table (blank separators etc.) are not part
+    # of the headline table.
+    sheet_rows = {}
+    for r in range(6, ws.max_row + 1):
+        label = ws.cell(row=r, column=1).value
+        if label is None:
+            break
+        sheet_rows[label] = ws.cell(row=r, column=2).value
+    expected_rows = dict(narrative.build_headline_stats(
+        results, clean_df, config.SCHEMA_REGISTRY["wind"], [run_id]
+    ))
+    assert sheet_rows == expected_rows

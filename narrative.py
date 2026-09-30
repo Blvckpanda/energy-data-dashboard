@@ -1,9 +1,11 @@
 """
 narrative.py
 
-Owns narrative paragraph generation, shared between export.py
-(Excel) and html_export.py (HTML). Produces schema-agnostic,
-plain-English summaries from real computed analysis values.
+Owns the shared summary content consumed by both exporters:
+the narrative paragraph and the headline-statistics rows.
+Produces schema-agnostic, plain-English output from real
+computed analysis values, so the Excel and HTML reports can
+never drift apart in what they claim.
 
 Fully registry-driven: hours per row come from the schema's
 interval_minutes, and the notable-pattern sentence dispatches on
@@ -15,6 +17,58 @@ No files are written. No side effects.
 import pandas as pd
 
 import config
+
+
+def build_headline_stats(
+    results: dict,
+    clean_df: pd.DataFrame,
+    cfg: dict,
+    run_ids: list[str] | None = None,
+) -> list[tuple[str, float | int]]:
+    """
+    Build the headline-statistics rows shared by both exporters.
+
+    One definition of the report's headline table: labels are
+    registry-driven plain English, values are raw numbers (the
+    ratio row is already scaled to percent). Each renderer applies
+    its own formatting; the row set and order are identical in
+    both report formats. Batch runs append a Source Files Processed
+    row equal to the number of run IDs.
+
+    Parameters:
+        results (dict): analysis results dict; needs 'stats' and
+                        'efficiency'
+        clean_df (pd.DataFrame): the clean DataFrame for this run
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+        run_ids (list[str] | None): normalised run IDs; more than
+            one marks a batch run and adds the source-file count row
+
+    Returns:
+        list[tuple[str, float | int]]: (label, value) pairs in
+            report order
+    """
+    stats = results["stats"]
+    efficiency_df = results["efficiency"]
+    primary = cfg["primary_power_col"]
+    secondary = cfg["secondary_col"]
+
+    rows: list[tuple[str, float | int]] = [
+        (f"Mean {cfg['primary_label']}", round(stats.loc["mean", primary], 2)),
+        (f"Max {cfg['primary_label']}", round(stats.loc["max", primary], 2)),
+        (f"Std Dev {cfg['primary_label']}", round(stats.loc["std", primary], 2)),
+        (f"Mean {cfg['secondary_label']}", round(stats.loc["mean", secondary], 2)),
+        (f"Max {cfg['secondary_label']}", round(stats.loc["max", secondary], 2)),
+        (f"Mean {cfg['ratio_label']}",
+         round(efficiency_df[cfg["ratio_name"]].mean() * 100, 2)),
+        ("Total Rows Analysed", len(efficiency_df)),
+        ("Rows Excluded from Analysis",
+         len(clean_df) - len(efficiency_df)),
+    ]
+    # Defensive normalisation: a bare string is a single run's ID
+    ids = [run_ids] if isinstance(run_ids, str) else list(run_ids or [])
+    if len(ids) > 1:
+        rows.append(("Source Files Processed", len(ids)))
+    return rows
 
 
 def build_narrative(results: dict, clean_df: pd.DataFrame, schema: str) -> str:

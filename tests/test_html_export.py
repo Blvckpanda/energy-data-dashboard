@@ -7,6 +7,7 @@ and Invariant 6 (same-day files never overwrite each other).
 
 import pytest
 
+import config
 import html_export
 
 
@@ -76,6 +77,28 @@ def test_quality_note_accepts_list_of_run_ids(wind_df, wind_harness):
     assert "<h2>Data Quality</h2>" in html
     # Both runs' cleaning actions are summarised (2 runs × 20 rows each)
     assert "20 rows dropped" in html or "2 rows dropped" not in html
+
+
+def test_html_stats_match_excel_stats(built):
+    """The HTML table carries the same labels as the Excel Summary's
+    shared builder — the two report formats cannot drift apart."""
+    import re
+
+    import narrative
+
+    clean_df, run_id, results, chart_paths, output_dir = built
+    path = html_export.export_html(
+        clean_df, results, chart_paths, "wind", output_dir, run_id,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    html_labels = set(re.findall(r"<tr><td>([^<]+)</td><td>", html))
+    expected_labels = {
+        label for label, _ in narrative.build_headline_stats(
+            results, clean_df, config.SCHEMA_REGISTRY["wind"], [run_id]
+        )
+    }
+    assert html_labels == expected_labels
 
 
 def test_same_day_rerun_gets_counter_suffix(built):
