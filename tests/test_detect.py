@@ -4,11 +4,11 @@ test_detect.py
 Tests for detect.py — threshold and rolling-window anomaly detection.
 """
 
-import config
-import clean
-import detect
-
 import pandas as pd
+
+import clean
+import config
+import detect
 
 
 def test_threshold_flags_extreme_outlier(wind_df):

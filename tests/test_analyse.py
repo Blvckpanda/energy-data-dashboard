@@ -7,9 +7,9 @@ and the daily_mean result used by the anomaly timeline chart.
 
 import pandas as pd
 
-import config
-import clean
 import analyse
+import clean
+import config
 
 
 def test_efficiency_excludes_zero_theoretical(wind_df):

@@ -12,9 +12,10 @@ These images are used in the final README to demonstrate the project
 output without relying on the ``output/`` directory, which is git‑ignored.
 """
 
-import os
 import glob
+import os
 import subprocess
+
 import matplotlib.pyplot as plt
 import openpyxl
 
@@ -49,7 +50,10 @@ if os.path.exists(source_chart):
 # ---------------------------------------------------------------------------
 # 3. Terminal output screenshot
 # ---------------------------------------------------------------------------
-cmd = [os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe"), "main.py", "--file", "data/turbine.csv"]
+cmd = [
+    os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe"),
+    "main.py", "--file", "data/turbine.csv",
+]
 result = subprocess.run(cmd, capture_output=True, text=True, cwd=BASE_DIR)
 output_text = result.stdout + result.stderr
 plt.figure(figsize=(8, 6))

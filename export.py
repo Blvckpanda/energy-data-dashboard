@@ -13,15 +13,15 @@ no changes here.
 Side effect: writes one .xlsx file to output/.
 """
 
-from pathlib import Path
-from datetime import date
 import csv
+from datetime import date
+from pathlib import Path
 
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 import config
 import narrative

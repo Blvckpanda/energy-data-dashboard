@@ -12,12 +12,13 @@ Side effect: appends structured CSV rows to logs/data_quality.log
 after every run. This file is append-only and never truncated.
 """
 
-import uuid
 import csv
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
 import config
 
 

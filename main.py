@@ -21,14 +21,14 @@ from pathlib import Path
 
 import pandas as pd
 
-import config
-import ingest
-import clean
 import analyse
-import visualise
+import clean
+import config
+import detect
 import export
 import html_export
-import detect
+import ingest
+import visualise
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -206,7 +206,10 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
             clean_df, run_id = clean.clean(raw_df, schema)
             rows_after = len(clean_df)
             dropped = rows_before - rows_after
-            print(f"[CLEAN] {rows_before:,} rows in → {rows_after:,} rows clean ({dropped:,} dropped)")
+            print(
+                f"[CLEAN] {rows_before:,} rows in → "
+                f"{rows_after:,} rows clean ({dropped:,} dropped)"
+            )
             run_ids.append(run_id)
         except SystemExit as e:
             print(f"[SKIP] {csv_path.name} — {e}")

@@ -7,8 +7,10 @@ present before returning a raw DataFrame. Does not clean or transform
 data.
 """
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 import config
 
 

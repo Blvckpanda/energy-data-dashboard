@@ -16,6 +16,7 @@ and export.py.
 """
 
 import pandas as pd
+
 import config
 
 
@@ -52,8 +53,9 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         "stats":        _compute_stats(df, cfg),
         "efficiency":   _compute_efficiency(df, cfg),
         "monthly":      _compute_monthly(df, cfg),
-        "daily":        _compute_daily(df, cfg),            "daily_mean":   _compute_daily_mean(df, cfg),
-            "distribution": _compute_distribution(df, cfg),
+        "daily":        _compute_daily(df, cfg),
+        "daily_mean":   _compute_daily_mean(df, cfg),
+        "distribution": _compute_distribution(df, cfg),
     }
 
 

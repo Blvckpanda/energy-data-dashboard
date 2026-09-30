@@ -9,9 +9,9 @@ Kaggle datasets being present in data/.
 import pandas as pd
 import pytest
 
-import config
-import clean
 import analyse
+import clean
+import config
 import detect
 import visualise
 

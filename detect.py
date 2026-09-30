@@ -16,6 +16,7 @@ the [DETECT] summary line printed to the terminal.
 """
 
 import pandas as pd
+
 import config
 
 

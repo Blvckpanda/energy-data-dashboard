@@ -16,10 +16,11 @@ Side effect: writes one .html file to the output directory.
 
 import base64
 import csv
-from pathlib import Path
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
+
 import config
 import narrative
 

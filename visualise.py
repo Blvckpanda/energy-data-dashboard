@@ -13,14 +13,16 @@ Side effect: writes .png files to the charts directory
 (config.CHARTS_DIR by default, or the charts_dir parameter).
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
+
 import matplotlib
 
 matplotlib.use("Agg")  # Non-interactive backend — no display window needed
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
+import seaborn as sns
+
 import config
 
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.1)

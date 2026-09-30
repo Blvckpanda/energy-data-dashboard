@@ -10,8 +10,8 @@ and batch modes.
 import openpyxl
 import pytest
 
-import main
 import config
+import main
 
 
 def _isolate(tmp_path, monkeypatch):
