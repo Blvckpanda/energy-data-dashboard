@@ -1,4 +1,11 @@
-"""Tests for analyse.py — stats, efficiency, resampling, distribution."""
+"""
+test_analyse.py
+
+Tests for analyse.py — stats, efficiency, resampling, distribution,
+and the daily_mean result used by the anomaly timeline chart.
+"""
+
+import pandas as pd
 
 import config
 import clean
@@ -17,6 +24,43 @@ def test_monthly_has_datetime_index(wind_df):
     clean_df, _ = clean.clean(wind_df, schema="wind")
     results = analyse.analyse(clean_df, schema="wind")
     assert results["monthly"].index.dtype.kind == "M"
+
+
+def test_daily_mean_has_datetime_index(wind_df):
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+    assert results["daily_mean"].index.dtype.kind == "M"
+
+
+def test_daily_mean_values_are_daily_means(wind_df):
+    """daily_mean equals the mean of raw rows per day — not their sum."""
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+
+    daily_mean = results["daily_mean"][config.COL_ACTIVE_POWER]
+    expected = clean_df.set_index(config.COL_DATETIME)[
+        config.COL_ACTIVE_POWER
+    ].resample("D").mean()
+
+    assert list(daily_mean.values) == list(expected.values)
+
+
+def test_daily_mean_magnitude_matches_raw_rows(wind_df):
+    """Anomaly points and the timeline line must share units: the daily
+    mean must be far smaller than the daily total for a multi-row day."""
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+
+    total = results["daily"][config.COL_ACTIVE_POWER].iloc[0]
+    mean = results["daily_mean"][config.COL_ACTIVE_POWER].iloc[0]
+    assert mean < total
+
+
+def test_analyse_does_not_mutate_input(wind_df):
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    before = clean_df.copy()
+    analyse.analyse(clean_df, schema="wind")
+    pd.testing.assert_frame_equal(clean_df, before)
 
 
 def test_wind_distribution_shape(wind_df):

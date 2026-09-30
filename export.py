@@ -76,7 +76,7 @@ def export(
     clean_df: pd.DataFrame,
     results: dict[str, pd.DataFrame],
     chart_paths: list[Path],
-    run_id: str,
+    run_id: str | list[str],
     output_dir: Path,
     schema: str,
 ) -> Path:
@@ -87,13 +87,14 @@ def export(
         clean_df (pd.DataFrame): cleaned SCADA DataFrame from clean.clean()
         results (dict[str, pd.DataFrame]): analysis results from
             analyse.analyse(). Must contain keys: 'stats', 'efficiency',
-            'monthly', 'daily', 'distribution', 'anomalies'.
+            'monthly', 'daily', 'daily_mean', 'distribution', 'anomalies'.
         chart_paths (list[Path]): list of four .png paths from
             visualise.visualise(), in order:
             [power_trend.png, wind_scatter.png, monthly_bar.png,
              anomaly_timeline.png]
-        run_id (str): UUID from clean.clean(), used to filter the
-            quality log to this run's entries only
+        run_id (str | list[str]): one UUID, or a list of UUIDs, from
+            clean.clean() — the quality log is filtered to entries
+            matching any of them (batch runs pass every file's ID)
         output_dir (Path): directory to write the report to
         schema (str): "wind" or "solar"
 
@@ -104,14 +105,14 @@ def export(
     Assumptions:
         - output_dir exists
         - All four chart .png files in chart_paths exist on disk
-        - logs/data_quality.log exists and contains entries for run_id
+        - logs/data_quality.log exists and contains entries for run_id(s)
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     wb = Workbook()
     wb.remove(wb.active)  # Remove the default empty sheet
 
     # Add sheets in required order
-    _write_summary(wb.create_sheet("Summary"), results, clean_df, schema)
+    _write_summary(wb.create_sheet("Summary"), results, clean_df, schema, run_id)
     _write_dataframe(
         wb.create_sheet("Clean Data"),
         clean_df,
@@ -124,6 +125,7 @@ def export(
     _write_charts(wb.create_sheet("Charts"), chart_paths)
     _write_anomalies(wb.create_sheet("Anomaly Report"), results["anomalies"], cfg)
     _write_quality_log(wb.create_sheet("Data Quality Log"), run_id)
+    # (run_id may be a list — _write_quality_log handles both shapes)
 
     # Build timestamped filename — Invariant 6
     base_filename = f"report_{date.today().isoformat()}"
@@ -146,20 +148,24 @@ def export(
 
 
 def _write_summary(
-    ws, results: dict, clean_df: pd.DataFrame, schema: str
+    ws, results: dict, clean_df: pd.DataFrame, schema: str,
+    run_id: str | list[str],
 ) -> None:
     """
     Write the Summary sheet with narrative paragraph and statistics table.
 
     Component 1 (rows 1-3): Narrative paragraph merged across A1:F3.
     Component 2 (rows 5+): Headline statistics table with plain-English
-    labels and styled header.
+    labels and styled header. Batch runs add a Source Files Processed
+    row equal to the number of run IDs.
 
     Parameters:
         ws: openpyxl Worksheet
         results (dict): analysis results from analyse.analyse()
         clean_df (pd.DataFrame): cleaned SCADA DataFrame
         schema (str): "wind" or "solar"
+        run_id (str | list[str]): current run ID, or list of per-file
+                                  run IDs in batch mode
     """
     # ── Component 1: Narrative paragraph ────────────────────────────
     narrative_text = narrative.build_narrative(results, clean_df, schema)
@@ -204,6 +210,9 @@ def _write_summary(
         ("Rows Excluded from Analysis",
          len(clean_df) - len(efficiency_df)),
     ]
+
+    if isinstance(run_id, list):
+        stats_table.append(("Source Files Processed", len(run_id)))
 
     for row_idx, (label, value) in enumerate(stats_table, start=5):
         ws.cell(row=row_idx, column=1, value=label)
@@ -343,19 +352,22 @@ def _write_anomalies(ws, anomalies_df: pd.DataFrame, cfg: dict) -> None:
     _write_dataframe(ws, anomalies_df, plain_headers=headers)
 
 
-def _write_quality_log(ws, run_id: str) -> None:
+def _write_quality_log(ws, run_id: str | list[str]) -> None:
     """
     Write quality log entries for the current run to the sheet.
 
     Parameters:
         ws: openpyxl Worksheet
-        run_id (str): UUID identifying the current run
+        run_id (str | list[str]): UUID identifying the current run, or
+            a list of per-file UUIDs in batch mode — entries matching
+            any listed ID are included
     """
     log_path: Path = config.LOG_PATH
+    run_ids = run_id if isinstance(run_id, list) else [run_id]
 
     with open(log_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        rows = [r for r in reader if r[config.LOG_FIELD_RUN_ID] == run_id]
+        rows = [r for r in reader if r[config.LOG_FIELD_RUN_ID] in run_ids]
 
     # Write header
     headers = config.LOG_FIELDS

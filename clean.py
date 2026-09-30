@@ -180,7 +180,9 @@ def _handle_nulls(
     for col in cfg["critical_columns"]:
         null_count = int(df[col].isna().sum())
         if null_count > 0:
-            df = df.dropna(subset=[col])
+            # .copy() — dropna returns a view-backed slice; assigning
+            # into it afterwards triggers pandas SettingWithCopyWarning
+            df = df.dropna(subset=[col]).copy()
         log_entries.append({
             config.LOG_FIELD_RUN_ID:       run_id,
             config.LOG_FIELD_TIMESTAMP:    run_timestamp,
@@ -285,12 +287,15 @@ def _append_log(entries: list[dict]) -> None:
         None
 
     Assumptions:
-        - config.LOG_PATH parent directory (logs/) already exists
         - Each dict in entries contains exactly the keys in
           config.LOG_FIELDS in any order
     """
     log_path: Path = config.LOG_PATH
     file_exists = log_path.exists()
+
+    # Fresh clones have no logs/ directory (gitignored) — create it
+    # rather than crash on the first write
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=config.LOG_FIELDS)

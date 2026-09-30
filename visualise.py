@@ -8,8 +8,8 @@ per chart. Returns a list of saved file paths for use by export.py.
 Schema-aware: axis labels and scatter reference series vary by
 schema, sourced from config.SCHEMA_REGISTRY.
 
-Side effect: writes .png files to output/charts/.
-This directory must exist before visualise() is called.
+Side effect: writes .png files to the charts directory
+(config.CHARTS_DIR by default, or the charts_dir parameter).
 """
 
 from pathlib import Path
@@ -30,51 +30,59 @@ AXIS_LABELS = {
 }
 
 
-def visualise(results: dict[str, pd.DataFrame], schema: str) -> list[Path]:
+def visualise(
+    results: dict[str, pd.DataFrame],
+    schema: str,
+    charts_dir: Path | None = None,
+) -> list[Path]:
     """
-    Generate all four charts and save them to output/charts/.
+    Generate all four charts and save them to the charts directory.
 
     Parameters:
         results (dict[str, pd.DataFrame]): the full results dict
             from analyse.analyse(). Must contain keys:
-            'daily', 'efficiency', 'monthly', 'anomalies'.
+            'daily', 'daily_mean', 'efficiency', 'monthly', 'anomalies'.
         schema (str): "wind" or "solar" — selects axis labels and
                       scatter reference series logic.
+        charts_dir (Path | None): directory to write .png files to.
+            Defaults to config.CHARTS_DIR when None.
 
     Returns:
         list[Path]: list of four Path objects pointing to the
                     saved .png files, in this order:
                     [power_trend.png, wind_scatter.png, monthly_bar.png,
                      anomaly_timeline.png]
-
-    Assumptions:
-        - output/charts/ directory already exists
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     labels = AXIS_LABELS[schema]
+    out_dir = config.CHARTS_DIR if charts_dir is None else Path(charts_dir)
 
-    # Ensure charts directory exists (critical when running under Docker
-    # with host volume mounts that overwrite build-time directories)
-    os.makedirs(config.CHARTS_DIR, exist_ok=True)
+    # Ensure the charts directory exists (critical when running under
+    # Docker with host volume mounts that overwrite build-time dirs)
+    os.makedirs(out_dir, exist_ok=True)
 
     paths = [
-        _plot_power_trend(results["daily"], labels["primary"]),
-        _plot_scatter(results["efficiency"], cfg, schema, labels),
-        _plot_monthly_bar(results["monthly"], labels["primary"]),
+        _plot_power_trend(results["daily"], labels["primary"], out_dir),
+        _plot_scatter(results["efficiency"], cfg, schema, labels, out_dir),
+        _plot_monthly_bar(results["monthly"], labels["primary"], out_dir),
         _plot_anomaly_timeline(
-            results["daily"], results["anomalies"], cfg, labels["primary"]
+            results["daily_mean"], results["anomalies"], cfg,
+            labels["primary"], out_dir,
         ),
     ]
     return paths
 
 
-def _plot_power_trend(daily_df: pd.DataFrame, axis_label: str) -> Path:
+def _plot_power_trend(
+    daily_df: pd.DataFrame, axis_label: str, out_dir: Path
+) -> Path:
     """
     Generate a line chart of daily total primary power over time.
 
     Parameters:
         daily_df (pd.DataFrame): daily resampled DataFrame
         axis_label (str): plain-English y-axis label
+        out_dir (Path): directory to save the .png file to
 
     Returns:
         Path: path to the saved power_trend.png file
@@ -95,7 +103,7 @@ def _plot_power_trend(daily_df: pd.DataFrame, axis_label: str) -> Path:
 
     fig.tight_layout()
 
-    out_path = config.CHARTS_DIR / "power_trend.png"
+    out_path = out_dir / "power_trend.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -103,7 +111,11 @@ def _plot_power_trend(daily_df: pd.DataFrame, axis_label: str) -> Path:
 
 
 def _plot_scatter(
-    efficiency_df: pd.DataFrame, cfg: dict, schema: str, labels: dict
+    efficiency_df: pd.DataFrame,
+    cfg: dict,
+    schema: str,
+    labels: dict,
+    out_dir: Path,
 ) -> Path:
     """
     Generate a scatter plot of secondary vs primary power.
@@ -116,6 +128,7 @@ def _plot_scatter(
         cfg (dict): schema config from SCHEMA_REGISTRY
         schema (str): "wind" or "solar"
         labels (dict): axis labels dict
+        out_dir (Path): directory to save the .png file to
 
     Returns:
         Path: path to the saved wind_scatter.png file
@@ -163,20 +176,23 @@ def _plot_scatter(
 
     fig.tight_layout()
 
-    out_path = config.CHARTS_DIR / "wind_scatter.png"
+    out_path = out_dir / "wind_scatter.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
     return out_path
 
 
-def _plot_monthly_bar(monthly_df: pd.DataFrame, axis_label: str) -> Path:
+def _plot_monthly_bar(
+    monthly_df: pd.DataFrame, axis_label: str, out_dir: Path
+) -> Path:
     """
     Generate a bar chart of monthly mean primary power output.
 
     Parameters:
         monthly_df (pd.DataFrame): monthly resampled DataFrame
         axis_label (str): plain-English y-axis label
+        out_dir (Path): directory to save the .png file to
 
     Returns:
         Path: path to the saved monthly_bar.png file
@@ -201,7 +217,7 @@ def _plot_monthly_bar(monthly_df: pd.DataFrame, axis_label: str) -> Path:
 
     fig.tight_layout()
 
-    out_path = config.CHARTS_DIR / "monthly_bar.png"
+    out_path = out_dir / "monthly_bar.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -209,16 +225,25 @@ def _plot_monthly_bar(monthly_df: pd.DataFrame, axis_label: str) -> Path:
 
 
 def _plot_anomaly_timeline(
-    daily_df: pd.DataFrame, anomalies_df: pd.DataFrame, cfg: dict, axis_label: str
+    daily_mean_df: pd.DataFrame,
+    anomalies_df: pd.DataFrame,
+    cfg: dict,
+    axis_label: str,
+    out_dir: Path,
 ) -> Path:
     """
-    Generate a trend line with anomalous periods highlighted.
+    Generate a daily-mean trend line with anomalies highlighted.
+
+    The line is the daily mean (not daily total) so anomaly points —
+    instantaneous readings in primary-power units — share the same
+    magnitude as the curve they overlay.
 
     Parameters:
-        daily_df (pd.DataFrame): daily resampled DataFrame
+        daily_mean_df (pd.DataFrame): daily-mean resampled DataFrame
         anomalies_df (pd.DataFrame): output of detect.detect()
         cfg (dict): schema config from SCHEMA_REGISTRY
         axis_label (str): plain-English y-axis label
+        out_dir (Path): directory to save the .png file to
 
     Returns:
         Path: path to the saved anomaly_timeline.png file
@@ -226,7 +251,7 @@ def _plot_anomaly_timeline(
     fig, ax = plt.subplots(figsize=(12, 5))
 
     ax.plot(
-        daily_df.index, daily_df[cfg["primary_power_col"]],
+        daily_mean_df.index, daily_mean_df[cfg["primary_power_col"]],
         linewidth=0.8, color=sns.color_palette("muted")[0], zorder=1,
     )
 
@@ -244,7 +269,7 @@ def _plot_anomaly_timeline(
     ax.tick_params(axis="x", rotation=30)
     fig.tight_layout()
 
-    out_path = config.CHARTS_DIR / "anomaly_timeline.png"
+    out_path = out_dir / "anomaly_timeline.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out_path

@@ -37,6 +37,9 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
             'efficiency'   — per-row efficiency/conversion ratio
             'monthly'      — monthly mean primary power
             'daily'        — daily total primary power
+            'daily_mean'   — daily mean primary power (anomaly
+                             timeline baseline, same units as the
+                             raw rows plotted over it)
             'distribution' — schema-specific distribution analysis
 
     Assumptions:
@@ -50,6 +53,7 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         "efficiency":   _compute_efficiency(df, cfg),
         "monthly":      _compute_monthly(df, cfg),
         "daily":        _compute_daily(df, cfg),
+        "daily_mean":   _compute_daily_mean(df, cfg),
         "distribution": _compute_distribution(df, schema),
     }
 
@@ -159,6 +163,32 @@ def _compute_daily(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
         df.set_index(cfg["datetime_col"])[cfg["primary_power_col"]]
         .resample("D")
         .sum()
+        .to_frame()
+    )
+
+
+def _compute_daily_mean(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """
+    Resample primary power to daily mean.
+
+    Mirrors _compute_monthly at day frequency. The anomaly timeline
+    chart plots this series instead of daily totals so instantaneous
+    anomaly points share the same units and magnitude as the line
+    they are drawn over.
+
+    Parameters:
+        df (pd.DataFrame): clean SCADA DataFrame with datetime64
+                           datetime column
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        pd.DataFrame: daily mean primary power.
+                      DatetimeIndex at day frequency ('D').
+    """
+    return (
+        df.set_index(cfg["datetime_col"])[cfg["primary_power_col"]]
+        .resample("D")
+        .mean()
         .to_frame()
     )
 

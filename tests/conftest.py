@@ -8,7 +8,12 @@ Kaggle datasets being present in data/.
 
 import pandas as pd
 import pytest
+
 import config
+import clean
+import analyse
+import detect
+import visualise
 
 
 @pytest.fixture
@@ -46,5 +51,37 @@ def wind_df_with_issues(wind_df) -> pd.DataFrame:
     df = wind_df.copy()
     df = pd.concat([df, df.iloc[[0]]], ignore_index=True)  # duplicate
     df.loc[5, config.COL_WIND_SPEED] = None                # null
+    # Raw CSV columns arrive as object dtype — mimic a bad string there
+    df[config.COL_ACTIVE_POWER] = df[config.COL_ACTIVE_POWER].astype(object)
     df.loc[6, config.COL_ACTIVE_POWER] = "N/A"              # bad string
     return df
+
+
+@pytest.fixture
+def wind_harness(tmp_path, monkeypatch):
+    """
+    Isolated pipeline harness for report tests.
+
+    Redirects CHARTS_DIR and LOG_PATH into tmp_path, then returns a
+    build(df) callable that runs clean → analyse → detect → visualise
+    and returns (clean_df, run_id, results, chart_paths), plus the
+    tmp output_dir and charts_dir paths.
+
+    Returns:
+        tuple: (build, output_dir, charts_dir) where
+               build(df, schema="wind") runs the pre-export stages
+    """
+    output_dir = tmp_path / "output"
+    charts_dir = output_dir / "charts"
+    charts_dir.mkdir(parents=True)
+    monkeypatch.setattr(config, "LOG_PATH", tmp_path / "logs" / "data_quality.log")
+    monkeypatch.setattr(config, "CHARTS_DIR", charts_dir)
+
+    def build(df: pd.DataFrame, schema: str = "wind") -> tuple:
+        clean_df, run_id = clean.clean(df, schema=schema)
+        results = analyse.analyse(clean_df, schema=schema)
+        results["anomalies"] = detect.detect(clean_df, schema=schema)
+        chart_paths = visualise.visualise(results, schema, charts_dir=charts_dir)
+        return clean_df, run_id, results, chart_paths
+
+    return build, output_dir, charts_dir

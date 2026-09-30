@@ -3,10 +3,19 @@ main.py
 
 Entry point and orchestrator for the Energy Operations Data Dashboard.
 Parses CLI arguments and calls pipeline modules in sequence.
+
+Both single-file and batch modes share one _run_pipeline() stage
+sequence (ANALYSE → DETECT → VISUALISE → EXPORT). Single-file runs
+carry one run_id; batch runs carry every file's run_id so reports
+include each file's quality-log entries.
 """
 import argparse
 import sys
 from pathlib import Path
+
+import pandas as pd
+
+import config
 import ingest
 import clean
 import analyse
@@ -25,6 +34,8 @@ def parse_args() -> argparse.Namespace:
             file   (Path | None): path to a single CSV file
             folder (Path | None): path to a folder of CSV files
             output (Path):        path to the output directory
+            schema (str):         "wind" or "solar"
+            format (str):         "excel", "html", or "both"
     """
     parser = argparse.ArgumentParser(
         prog="main.py",
@@ -50,8 +61,9 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         metavar="OUTPUT",
-        default=Path("output"),
-        help="Directory to write the Excel report to. Defaults to output/.",
+        default=config.OUTPUT_DIR,
+        help="Directory to write the report to. Defaults to the "
+             "project's output/ directory (config.OUTPUT_DIR).",
     )
     parser.add_argument(
         "--schema",
@@ -68,17 +80,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-import pandas as pd
-
 def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None:
     """
     Run the full pipeline on a single CSV file.
 
-    Stages: LOAD → CLEAN → ANALYSE → VISUALISE → EXPORT
+    LOAD and CLEAN run for this file only; the shared analysis,
+    detection, visualisation, and export stages then run on the
+    result. The report's quality-log entries are filtered to this
+    run's run_id.
 
     Parameters:
         file_path (Path): path to the SCADA CSV file to process
-        output_dir (Path): directory to write the report to
+        output_dir (Path): directory to write the report and charts to
         schema (str): SCADA schema — "wind" or "solar"
         fmt (str): report format — "excel", "html", or "both"
 
@@ -87,10 +100,9 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
 
     Side effects:
         - Appends entries to logs/data_quality.log
-        - Writes .png files to output/charts/
+        - Writes .png files to output_dir/charts/
         - Writes one or more report files to output_dir
     """
-    # ── LOAD ──────────────────────────────────────────────────────
     try:
         raw_df = ingest.load_csv(file_path)
         ingest.validate_schema(raw_df, schema)
@@ -100,7 +112,6 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     except Exception as e:
         sys.exit(f"Unexpected error during ingestion: {e}")
 
-    # ── CLEAN ─────────────────────────────────────────────────────
     try:
         rows_before = len(raw_df)
         clean_df, run_id = clean.clean(raw_df, schema)
@@ -112,63 +123,7 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     except Exception as e:
         sys.exit(f"Unexpected error during cleaning: {e}")
 
-    # ── ANALYSE ───────────────────────────────────────────────────
-    try:
-        results = analyse.analyse(clean_df, schema)
-        print("[ANALYSE]")
-        for key, result_df in results.items():
-            print(f"\n--- {key} ({len(result_df)} rows) ---")
-            print(result_df.head())
-    except SystemExit:
-        raise
-    except Exception as e:
-        sys.exit(f"Unexpected error during analysis: {e}")
-
-    # ── Unit 10: Anomaly Detection ─────────────────────────────────
-    try:
-        results["anomalies"] = detect.detect(clean_df, schema)
-    except SystemExit:
-        raise
-    except Exception as e:
-        sys.exit(f"Unexpected error during anomaly detection: {e}")
-
-    # ── VISUALISE ─────────────────────────────────────────────────
-    try:
-        chart_paths = visualise.visualise(results, schema)
-        print("[VISUALISE]")
-        for path in chart_paths:
-            print(f"  Chart saved → {path}")
-    except SystemExit:
-        raise
-    except Exception as e:
-        sys.exit(f"Unexpected error during visualisation: {e}")
-
-    # ── EXPORT ────────────────────────────────────────────────────
-    try:
-        print("[EXPORT]")
-        if fmt in ("excel", "both"):
-            report_path = export.export(
-                clean_df=clean_df,
-                results=results,
-                chart_paths=chart_paths,
-                run_id=run_id,
-                output_dir=output_dir,
-                schema=schema,
-            )
-            print(f"Report saved → {report_path}")
-        if fmt in ("html", "both"):
-            html_path = html_export.export_html(
-                clean_df=clean_df,
-                results=results,
-                chart_paths=chart_paths,
-                schema=schema,
-                output_dir=output_dir,
-            )
-            print(f"Report saved → {html_path}")
-    except SystemExit:
-        raise
-    except Exception as e:
-        sys.exit(f"Unexpected error during export: {e}")
+    _run_pipeline(clean_df, run_id, output_dir, schema, fmt)
 
 
 def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> None:
@@ -176,15 +131,19 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
     Run the pipeline on all .csv files in a folder.
 
     Processes each CSV through ingest and clean independently.
-    Concatenates clean DataFrames with a source_file column.
-    Produces one consolidated report from the combined data.
+    Concatenates clean DataFrames with a source_file column, then
+    runs the shared analysis/export stages on the combined data.
 
     Files that fail ingestion or cleaning are skipped with a
     plain-English warning. Processing continues for remaining files.
+    Every successfully processed file's run_id is carried into the
+    consolidated report, so its Data Quality Log sheet lists each
+    file's cleaning decisions.
 
     Parameters:
         folder_path (Path): directory containing SCADA CSV files
-        output_dir (Path): directory to write the consolidated report to
+        output_dir (Path): directory to write the consolidated report
+                           and charts to
         schema (str): SCADA schema — "wind" or "solar"
         fmt (str): report format — "excel", "html", or "both"
 
@@ -193,7 +152,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
 
     Side effects:
         - Appends entries to logs/data_quality.log (one set per file)
-        - Writes .png files to output/charts/
+        - Writes .png files to output_dir/charts/
         - Writes one or more consolidated report files to output_dir
     """
     if not folder_path.exists():
@@ -207,7 +166,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
     print(f"[BATCH] Found {len(csv_files)} CSV file(s) in {folder_path}")
 
     cleaned_frames: list[pd.DataFrame] = []
-    last_run_id: str = ""
+    run_ids: list[str] = []
 
     for csv_path in csv_files:
         print(f"\n[BATCH] Processing: {csv_path.name}")
@@ -231,7 +190,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
             rows_after = len(clean_df)
             dropped = rows_before - rows_after
             print(f"[CLEAN] {rows_before:,} rows in → {rows_after:,} rows clean ({dropped:,} dropped)")
-            last_run_id = run_id
+            run_ids.append(run_id)
         except SystemExit as e:
             print(f"[SKIP] {csv_path.name} — {e}")
             continue
@@ -254,11 +213,45 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
     # ── Concatenate all cleaned frames ────────────────────────────
     print(f"\n[BATCH] Concatenating {len(cleaned_frames)} cleaned file(s)...")
     consolidated_df = pd.concat(cleaned_frames, ignore_index=True)
-    print(f"[BATCH] Consolidated: {len(consolidated_df):,} total rows")
+    print(f"[BATCH] Consolidated: {len(consolidated_df):,} total rows "
+          f"from {len(run_ids)} file(s)")
 
-    # ── ANALYSE (on consolidated data) ───────────────────────────
+    _run_pipeline(consolidated_df, run_ids, output_dir, schema, fmt)
+
+
+def _run_pipeline(
+    df: pd.DataFrame,
+    run_id: str | list[str],
+    output_dir: Path,
+    schema: str,
+    fmt: str,
+) -> None:
+    """
+    Run the shared post-clean stages: ANALYSE → DETECT → VISUALISE
+    → EXPORT, writing reports and charts to output_dir.
+
+    Parameters:
+        df (pd.DataFrame): clean DataFrame (single file or batch-
+                           concatenated with a source_file column)
+        run_id (str | list[str]): this run's UUID, or the list of
+                                  per-file UUIDs in batch mode
+        output_dir (Path): directory to write the report and charts to
+        schema (str): "wind" or "solar"
+        fmt (str): "excel", "html", or "both"
+
+    Returns:
+        None
+
+    Side effects:
+        - Writes .png files to output_dir/charts/
+        - Writes one or more report files to output_dir
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir = output_dir / "charts"
+
+    # ── ANALYSE ───────────────────────────────────────────────────
     try:
-        results = analyse.analyse(consolidated_df, schema)
+        results = analyse.analyse(df, schema)
         print("[ANALYSE]")
         for key, result_df in results.items():
             print(f"\n--- {key} ({len(result_df)} rows) ---")
@@ -267,17 +260,18 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during analysis: {e}")
-    # ── Unit 10: Anomaly Detection ─────────────────────────────────
+
+    # ── DETECT ────────────────────────────────────────────────────
     try:
-        results["anomalies"] = detect.detect(consolidated_df, schema)
+        results["anomalies"] = detect.detect(df, schema)
     except SystemExit:
         raise
     except Exception as e:
         sys.exit(f"Unexpected error during anomaly detection: {e}")
-    # ── VISUALISE (on consolidated data) ─────────────────────────
-    try:
-        chart_paths = visualise.visualise(results, schema)
 
+    # ── VISUALISE ─────────────────────────────────────────────────
+    try:
+        chart_paths = visualise.visualise(results, schema, charts_dir=charts_dir)
         print("[VISUALISE]")
         for path in chart_paths:
             print(f"  Chart saved → {path}")
@@ -286,26 +280,27 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
     except Exception as e:
         sys.exit(f"Unexpected error during visualisation: {e}")
 
-    # ── EXPORT (consolidated report) ──────────────────────────────
+    # ── EXPORT ────────────────────────────────────────────────────
     try:
         print("[EXPORT]")
         if fmt in ("excel", "both"):
             report_path = export.export(
-                clean_df=consolidated_df,
+                clean_df=df,
                 results=results,
                 chart_paths=chart_paths,
-                run_id=last_run_id,
+                run_id=run_id,
                 output_dir=output_dir,
                 schema=schema,
             )
             print(f"Report saved → {report_path}")
         if fmt in ("html", "both"):
             html_path = html_export.export_html(
-                clean_df=consolidated_df,
+                clean_df=df,
                 results=results,
                 chart_paths=chart_paths,
                 schema=schema,
                 output_dir=output_dir,
+                run_id=run_id,
             )
             print(f"Report saved → {html_path}")
     except SystemExit:

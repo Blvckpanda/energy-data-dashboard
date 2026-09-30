@@ -1,8 +1,14 @@
-"""Tests for detect.py — threshold and rolling-window anomaly detection."""
+"""
+test_detect.py
+
+Tests for detect.py — threshold and rolling-window anomaly detection.
+"""
 
 import config
 import clean
 import detect
+
+import pandas as pd
 
 
 def test_threshold_flags_extreme_outlier(wind_df):
@@ -30,6 +36,16 @@ def test_detect_excludes_non_operational_rows(wind_df):
     clean_df, _ = clean.clean(df, schema="wind")
     anomalies = detect.detect(clean_df, schema="wind")
     assert 0.0 not in anomalies[config.COL_ACTIVE_POWER].values
+
+
+def test_detect_does_not_mutate_input(wind_df):
+    """detect() must not leave helper columns in the caller's DataFrame."""
+    df = wind_df.copy()
+    df.loc[10, config.COL_ACTIVE_POWER] = 10_000.0
+    clean_df, _ = clean.clean(df, schema="wind")
+    before = clean_df.copy()
+    detect.detect(clean_df, schema="wind")
+    pd.testing.assert_frame_equal(clean_df, before)
 
 
 def test_detect_empty_result_does_not_crash(wind_df):
