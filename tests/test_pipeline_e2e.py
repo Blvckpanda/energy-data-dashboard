@@ -92,6 +92,14 @@ def test_run_batch_processes_all_valid_files(
     report_path = next(output_dir.glob("report_*.xlsx"))
     wb = openpyxl.load_workbook(report_path)
 
+    # Summary states how many source files were processed
+    summary = wb["Summary"]
+    summary_rows = {
+        summary.cell(row=r, column=1).value: summary.cell(row=r, column=2).value
+        for r in range(1, summary.max_row + 1)
+    }
+    assert summary_rows["Source Files Processed"] == 2
+
     # Consolidated Clean Data holds both sites' rows. _write_dataframe
     # emits the unnamed index as column 1 plus a blank row after the
     # header, so data starts at row 3 with source_file in column 2.
