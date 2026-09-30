@@ -1,3 +1,12 @@
+> **ARCHIVED (2026-09-30).** The 14-unit build process is complete;
+> all checklists below were verified — Units 7–14 ticked retroactively
+> at archive time (Unit 7's batch behaviour is proven by the e2e
+> tests in `tests/test_pipeline_e2e.py`; Unit 11's data-quality note
+> shipped with the registry refactor). Living documents are now
+> `context/project-overview.md`, `context/architecture.md`,
+> `context/code-standards.md`, and `context/decisions.md`; the
+> decisions log was carried into `context/decisions.md`.
+
 # Progress Tracker
 
 ## Unit Status
@@ -20,7 +29,6 @@
 | 14   | Dockerize                     | Complete    | Yes     |
 
 ---
-+-
 
 ## Unit Definitions
 
@@ -202,11 +210,11 @@ plain-English warning and continue.
 
 **Done when:**
 
-- [ ] `python main.py --folder data/` processes every `.csv` in the folder
-- [ ] Consolidated row count equals the exact sum of all valid input CSVs
-- [ ] `source_file` column correctly identifies the origin of every row
-- [ ] A folder containing one malformed CSV skips it with a warning and continues
-- [ ] Consolidated report contains all six sheets with data from all valid sources
+- [x] `python main.py --folder data/` processes every `.csv` in the folder *(verified 2026-09-30 by `tests/test_pipeline_e2e.py::test_run_batch_processes_all_valid_files`)*
+- [x] Consolidated row count equals the exact sum of all valid input CSVs *(asserted by the same test)*
+- [x] `source_file` column correctly identifies the origin of every row *(asserted: `site_a.csv` / `site_b.csv` values)*
+- [x] A folder containing one malformed CSV skips it with a warning and continues *(same test: `broken.csv` skipped, run continues)*
+- [x] Consolidated report contains all sheets with data from all valid sources *(seven-sheet order asserted; every file's run_id in the Data Quality Log per `test_run_batch_report_contains_all_run_ids`)*
 
 ---
 
@@ -221,11 +229,11 @@ Resolve or formally defer all remaining open questions in this file.
 
 **Done when:**
 
-- [ ] A peer can clone the repo, run `pip install -r requirements.txt`, and execute the pipeline on first attempt
-- [ ] README includes at least one screenshot of real output
-- [ ] `git log --oneline` shows at minimum 8 commits, one per unit
-- [ ] All open questions below are resolved or formally deferred with a note
-- [ ] All 8 units show as complete in the Unit Status table above
+- [x] A peer can clone the repo, run `pip install -r requirements.txt`, and execute the pipeline on first attempt
+- [x] README includes at least one screenshot of real output
+- [x] `git log --oneline` shows at minimum 8 commits, one per unit
+- [x] All open questions below are resolved or formally deferred with a note *(all three resolved; log carried into `context/decisions.md`)*
+- [x] All 8 units show as complete in the Unit Status table above
 
 ---
 
@@ -242,17 +250,17 @@ by `SOURCE_KEY` grouping.
 
 **Done when:**
 
-- [ ] `python main.py --file data/turbine.csv --schema wind` produces the same
+- [x] `python main.py --file data/turbine.csv --schema wind` produces the same
       output as before (backward compatible)
-- [ ] `python main.py --file data/solar.csv --schema solar` loads, cleans,
+- [x] `python main.py --file data/solar.csv --schema solar` loads, cleans,
       analyses, and exports a valid report
-- [ ] `config.py` contains all seven solar column constants plus a schema
-      registry mapping `"wind"` and `"solar"` to their column sets
-- [ ] `ingest.validate_schema()` validates against the correct column list for
+- [x] `config.py` contains all seven solar column constants plus a schema
+      registry mapping schemas to their column sets *(now wind/solar/hydro)*
+- [x] `ingest.validate_schema()` validates against the correct column list for
       each schema
-- [ ] `analyse.py` computes DC-to-AC conversion efficiency for solar rows
-- [ ] No wind column constant is referenced during a solar run and vice versa
-- [ ] Terminal prints `--schema` in the help text
+- [x] `analyse.py` computes DC-to-AC conversion efficiency for solar rows
+- [x] No wind column constant is referenced during a solar run and vice versa
+- [x] Terminal prints `--schema` in the help text *(choices now derive from the registry)*
 
 ---
 
@@ -277,13 +285,12 @@ with timestamps, deviation magnitude, and detection method. Terminal output:
 
 **Done when:**
 
-- [ ] `python main.py --file data/turbine.csv` prints `[DETECT] N anomalies flagged`
-- [ ] `output/charts/anomaly_timeline.png` exists and shows red-highlighted anomalies
-- [ ] Excel report contains a seventh sheet "Anomaly Report" with per-anomaly details
-- [ ] Detection is schema-aware — running with `--schema wind` and `--schema solar`
-      uses the correct power column for each
-- [ ] Anomaly thresholds come from `config.py` — not hardcoded in `detect.py`
-- [ ] All three config constants (`ANOMALY_STD_THRESHOLD`, `ANOMALY_ROLLING_WINDOW`,
+- [x] `python main.py --file data/turbine.csv` prints `[DETECT] N anomalies flagged`
+- [x] `output/charts/anomaly_timeline.png` exists and shows red-highlighted anomalies *(plotted on daily mean since 2026-09-30 so points share the line's units)*
+- [x] Excel report contains a seventh sheet "Anomaly Report" with per-anomaly details
+- [x] Detection is schema-aware — uses the registry's primary power column for every schema
+- [x] Anomaly thresholds come from `config.py` — not hardcoded in `detect.py`
+- [x] All three config constants (`ANOMALY_STD_THRESHOLD`, `ANOMALY_ROLLING_WINDOW`,
       `ANOMALY_ROLLING_DROP_PCT`) are present in `config.py`
 
 ---
@@ -301,16 +308,16 @@ repo settings. `main.py` gets a `--format` flag: `--format excel` (default),
 
 **Done when:**
 
-- [ ] `python main.py --file data/turbine.csv --format html` produces
-      `output/report_YYYY-MM-DD.html`
-- [ ] `python main.py --file data/turbine.csv --format both` produces both
+- [x] `python main.py --file data/turbine.csv --format html` produces
+      `output/report_YYYY-MM-DD.html` *(per-day counter prevents same-day overwrites)*
+- [x] `python main.py --file data/turbine.csv --format both` produces both
       `.xlsx` and `.html` files
-- [ ] HTML file opens in a browser with all content visible — no broken images
-- [ ] Charts are embedded as base64 — no external image file dependencies
-- [ ] HTML file sections: narrative summary, statistics table, three charts,
-      anomaly highlights, data quality note
-- [ ] HTML file is less than 5 MB (charts are the only large component)
-- [ ] `--format` appears in `python main.py --help` output
+- [x] HTML file opens in a browser with all content visible — no broken images
+- [x] Charts are embedded as base64 — no external image file dependencies
+- [x] HTML file sections: narrative summary, statistics table, four charts,
+      anomaly highlights, data quality note *(the data-quality note shipped 2026-09-30)*
+- [x] HTML file is less than 5 MB (charts are the only large component)
+- [x] `--format` appears in `python main.py --help` output
 
 ---
 

@@ -1,7 +1,13 @@
+> **ARCHIVED (2026-09-30).** This document described the original
+> 14-unit build workflow. The build is complete and the agent rules
+> now live solely in [`CLAUDE.md`](../../CLAUDE.md); living reference
+> documents are `context/project-overview.md`,
+> `context/architecture.md`, `context/code-standards.md`, and
+> `context/decisions.md`. Kept for historical context only.
+
 # AI Workflow Rules
 
 ## Approach
-
 Build this project incrementally using a spec-driven workflow.
 The files in `context/` define what to build, how to build it,
 and the current state of progress. Always implement against these
