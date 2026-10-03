@@ -8,6 +8,7 @@ Invariant 6 (a run never overwrites a previous report).
 import openpyxl
 import pytest
 
+import analyse
 import config
 import export
 
@@ -134,3 +135,18 @@ def test_headline_stats_match_shared_builder(built):
         results, clean_df, config.SCHEMA_REGISTRY["wind"], [run_id]
     ))
     assert sheet_rows == expected_rows
+
+
+@pytest.mark.parametrize("schema", ["wind", "solar", "hydro"])
+def test_efficiency_headers_follow_analyse_column_selection(schema):
+    """The Efficiency sheet's headers derive from analyse's own column
+    selection — analyse.efficiency_columns is the single owner of the
+    order, so the sheet can never drift from the analysis."""
+    cfg = config.SCHEMA_REGISTRY[schema]
+    headers = export._efficiency_headers(cfg)
+
+    assert list(headers.keys()) == analyse.efficiency_columns(cfg)
+    assert headers[cfg["ratio_name"]] == cfg["ratio_label"]
+    for col, label in headers.items():
+        if col != cfg["ratio_name"]:
+            assert label == cfg["display_names"].get(col, col)

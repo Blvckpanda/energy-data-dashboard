@@ -80,3 +80,24 @@ def test_solar_efficiency_uses_conversion_ratio(solar_df):
     clean_df, _ = clean.clean(solar_df, schema="solar")
     results = analyse.analyse(clean_df, schema="solar")
     assert "conversion_ratio" in results["efficiency"].columns
+
+
+def test_efficiency_columns_order_and_dedup(wind_df, solar_df):
+    """analyse owns the efficiency column order. Order-preserving dedup:
+    solar's secondary == reference collapses five selections to four.
+    The produced efficiency frames follow the owned list exactly."""
+    assert analyse.efficiency_columns(config.SCHEMA_REGISTRY["wind"]) == [
+        config.COL_DATETIME, config.COL_ACTIVE_POWER, config.COL_WIND_SPEED,
+        config.COL_THEORETICAL, "efficiency_ratio",
+    ]
+    assert analyse.efficiency_columns(config.SCHEMA_REGISTRY["solar"]) == [
+        config.COL_SOLAR_DATETIME, config.COL_AC_POWER, config.COL_DC_POWER,
+        "conversion_ratio",
+    ]
+
+    for df, schema in ((wind_df, "wind"), (solar_df, "solar")):
+        clean_df, _ = clean.clean(df, schema=schema)
+        results = analyse.analyse(clean_df, schema=schema)
+        assert list(results["efficiency"].columns) == analyse.efficiency_columns(
+            config.SCHEMA_REGISTRY[schema]
+        )

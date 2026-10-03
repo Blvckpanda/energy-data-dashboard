@@ -59,3 +59,5 @@ build's progress tracker (now archived at
 | 2026-09-30 | ruff (E/F/W/I) gates CI via a lint job | Catches drift pytest cannot; one per-file E402 exemption for Agg ordering |
 | 2026-09-30 | Docs consolidated: overview/architecture/standards/decisions live; unit specs archived | The 14-unit build process finished; shrinking the sync surface keeps docs honest |
 | 2026-09-30 | MIT LICENSE file added | README and badge already claimed MIT; the file makes it real |
+| 2026-10-03 | `analyse.efficiency_columns()` owns the efficiency column order | `export._efficiency_headers` re-derived the same selection-and-dedup as `_compute_efficiency`; one owner (with a parity test over all schemas) means the Efficiency sheet can never drift from the analysis |
+| 2026-10-03 | `_print_load_summary()` shared by both run modes | Same pattern as `_print_clean_summary`: one definition of the `[LOAD]` line, byte-identical console output verified against a pre-refactor real-data run |

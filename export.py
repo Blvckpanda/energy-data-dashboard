@@ -23,6 +23,7 @@ from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+import analyse
 import config
 import narrative
 
@@ -33,25 +34,20 @@ def _efficiency_headers(cfg: dict) -> dict:
     the registry: display names for the efficiency DataFrame's own
     columns plus the ratio column.
 
+    The column order is not re-derived here — analyse.efficiency_columns
+    owns it, so this header map can never drift from the DataFrame the
+    analysis actually produces.
+
     Parameters:
         cfg (dict): schema config from config.SCHEMA_REGISTRY
 
     Returns:
         dict: mapping of raw column names to display headers
     """
-    ratio_name = cfg["ratio_name"]
-    ratio_label = cfg["ratio_label"]
-    seen: set[str] = set()
-    eff_cols: list[str] = []
-    for col in (cfg["datetime_col"], cfg["primary_power_col"],
-                cfg["secondary_col"], cfg["reference_col"], ratio_name):
-        if col not in seen:
-            seen.add(col)
-            eff_cols.append(col)
     return {
-        col: (ratio_label if col == ratio_name
+        col: (cfg["ratio_label"] if col == cfg["ratio_name"]
               else cfg["display_names"].get(col, col))
-        for col in eff_cols
+        for col in analyse.efficiency_columns(cfg)
     }
 
 

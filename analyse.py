@@ -74,6 +74,39 @@ def _compute_stats(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     return df[[cfg["primary_power_col"], cfg["secondary_col"]]].describe()
 
 
+def efficiency_columns(cfg: dict) -> list[str]:
+    """
+    Return the efficiency DataFrame's column order for a schema.
+
+    Single owner of that order: _compute_efficiency selects these
+    columns, and export._efficiency_headers derives the Efficiency
+    Analysis sheet's header row from the same list — so the sheet can
+    never drift out of step with the analysis. The registry key order
+    is the contract: datetime, primary output, secondary metric,
+    reference, then the ratio itself.
+
+    Deduplication preserves order (handles solar, where secondary_col
+    == reference_col: five selections collapse to four columns).
+
+    Parameters:
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        list[str]: unique column names in report order
+    """
+    select_cols = [
+        cfg["datetime_col"], cfg["primary_power_col"],
+        cfg["secondary_col"], cfg["reference_col"], cfg["ratio_name"],
+    ]
+    seen: set[str] = set()
+    unique_cols: list[str] = []
+    for col in select_cols:
+        if col not in seen:
+            seen.add(col)
+            unique_cols.append(col)
+    return unique_cols
+
+
 def _compute_efficiency(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """
     Compute per-row efficiency or conversion ratio.
@@ -110,20 +143,7 @@ def _compute_efficiency(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
         operational[cfg["reference_col"]]
     )
 
-    select_cols = [
-        cfg["datetime_col"], cfg["primary_power_col"],
-        cfg["secondary_col"], cfg["reference_col"], cfg["ratio_name"],
-    ]
-    # Deduplicate while preserving order (handles solar where
-    # secondary_col == reference_col)
-    seen: set[str] = set()
-    unique_cols: list[str] = []
-    for c in select_cols:
-        if c not in seen:
-            seen.add(c)
-            unique_cols.append(c)
-
-    return operational[unique_cols]
+    return operational[efficiency_columns(cfg)]
 
 
 def _compute_monthly(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
