@@ -3,8 +3,10 @@ export.py
 
 Owns Excel workbook assembly and file export.
 Receives the clean DataFrame, analysis results dict, chart image
-paths, run_id(s), schema, and output directory. Assembles a
-seven-sheet .xlsx workbook and returns the output file path.
+paths, run_id(s), schema, and output directory. Assembles an .xlsx
+workbook — seven base sheets, plus the measured power-curve sheet
+when the schema's registry entry enables it — and returns the
+output file path.
 
 Fully schema-agnostic: sheet headers, narrative text, and statistics
 labels come from config.SCHEMA_REGISTRY — adding a schema requires
@@ -104,6 +106,13 @@ def export(
     _write_efficiency_analysis(
         wb.create_sheet("Efficiency Analysis"), results["efficiency"], cfg
     )
+    # Measured power curve sheet — only for schemas whose registry
+    # entry enables it (wind); present between Efficiency and Charts
+    if "power_curve" in results:
+        _write_power_curve(
+            wb.create_sheet(config.POWER_CURVE_SHEET_NAME),
+            results["power_curve"], cfg,
+        )
     _write_charts(wb.create_sheet("Charts"), chart_paths)
     _write_anomalies(wb.create_sheet("Anomaly Report"), results["anomalies"], cfg)
     _write_quality_log(wb.create_sheet("Data Quality Log"), run_ids)
@@ -178,6 +187,7 @@ def _write_dataframe(
     ws,
     df: pd.DataFrame,
     plain_headers: dict,
+    write_index: bool = True,
 ) -> None:
     """
     Write a DataFrame to a worksheet with plain-English headers.
@@ -187,11 +197,15 @@ def _write_dataframe(
         df (pd.DataFrame): DataFrame to write
         plain_headers (dict): mapping of raw column names to
                               plain-English display labels
+        write_index (bool): include the DataFrame's index as the
+                            first column (default True, matching the
+                            other sheets). False when the index has
+                            already been reset into a real column.
     """
     display_df = df.rename(columns=plain_headers)
 
     for row_idx, row in enumerate(
-        dataframe_to_rows(display_df, index=True, header=True), start=1
+        dataframe_to_rows(display_df, index=write_index, header=True), start=1
     ):
         ws.append(row)
         if row_idx == 1:
@@ -254,6 +268,39 @@ def _write_efficiency_analysis(
         cfg (dict): schema config from config.SCHEMA_REGISTRY
     """
     _write_dataframe(ws, efficiency_df, plain_headers=_efficiency_headers(cfg))
+
+
+def _write_power_curve(
+    ws, power_curve_df: pd.DataFrame, cfg: dict
+) -> None:
+    """
+    Write the measured power curve to its sheet (IEC 61400-12-1
+    bins). Column headers come from narrative.power_curve_headers —
+    one definition shared with the HTML report.
+
+    Parameters:
+        ws: openpyxl Worksheet
+        power_curve_df (pd.DataFrame): analyse's power-curve result
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+    """
+    display_df = power_curve_df.copy()
+    # openpyxl cannot serialise pandas Interval objects, and its
+    # dataframe_to_rows emits a named index as an orphan row rather
+    # than a header cell. Reset the bin index into a real column named
+    # with the shared plain-English bin header and write without the
+    # extra index column — the sheet's header row then matches the
+    # HTML table's exactly. The analysis result keeps the real
+    # intervals for the HTML renderer.
+    bin_header = narrative.power_curve_bin_header(cfg)
+    display_df = display_df.reset_index()
+    first_col = display_df.columns[0]
+    display_df[first_col] = display_df[first_col].astype(str)
+    display_df = display_df.rename(columns={first_col: bin_header})
+    _write_dataframe(
+        ws, display_df,
+        plain_headers=narrative.power_curve_headers(cfg),
+        write_index=False,
+    )
 
 
 def _write_charts(ws, chart_paths: list[Path]) -> None:

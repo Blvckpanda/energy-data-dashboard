@@ -6,6 +6,7 @@ and the daily_mean result used by the anomaly timeline chart.
 """
 
 import pandas as pd
+import pytest
 
 import analyse
 import clean
@@ -101,3 +102,45 @@ def test_efficiency_columns_order_and_dedup(wind_df, solar_df):
         assert list(results["efficiency"].columns) == analyse.efficiency_columns(
             config.SCHEMA_REGISTRY[schema]
         )
+
+
+def test_power_curve_bins_structure_and_sufficiency(wind_df):
+    """IEC 61400-12-1-style bins: registry bin width, bin means, and a
+    sufficiency flag against the registry's per-bin sample minimum.
+    The curve covers exactly the rows the efficiency analysis covers."""
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+    curve = results["power_curve"]
+
+    cfg = config.SCHEMA_REGISTRY["wind"]
+    for interval in curve.index:
+        assert (interval.right - interval.left) == cfg["power_curve_bin_width"]
+    assert list(curve.columns) == [
+        "mean_secondary", "mean_primary", "mean_reference",
+        "count", "sufficient",
+    ]
+    assert (curve["sufficient"] == (
+        curve["count"] >= cfg["power_curve_min_samples"]
+    )).all()
+    assert int(curve["count"].sum()) == len(results["efficiency"])
+
+
+@pytest.mark.parametrize("schema,df_fixture", [
+    ("solar", "solar_df"), ("hydro", "hydro_df"),
+])
+def test_power_curve_absent_without_registry_opt_in(request, schema, df_fixture):
+    """No power_curve_bin_width in the registry → no power_curve key.
+    Enablement is registry-driven, not a schema-name branch."""
+    df = request.getfixturevalue(df_fixture)
+    clean_df, _ = clean.clean(df, schema=schema)
+    results = analyse.analyse(clean_df, schema=schema)
+    assert "power_curve" not in results
+
+
+def test_power_curve_empty_when_no_operational_rows(wind_df):
+    """Nothing operational → an empty curve frame, not a crash."""
+    df = wind_df.copy()
+    df[config.COL_THEORETICAL] = 0
+    clean_df, _ = clean.clean(df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+    assert results["power_curve"].empty

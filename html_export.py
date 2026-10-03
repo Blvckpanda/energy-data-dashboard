@@ -59,6 +59,10 @@ def export_html(
     stats_html = _render_stats_table(results, clean_df, cfg, run_ids)
     anomaly_html = _render_anomaly_summary(results)
     quality_html = _render_quality_note(run_ids)
+    power_curve_html = (
+        _render_power_curve_table(results["power_curve"], cfg)
+        if "power_curve" in results else ""
+    )
     images_b64 = [_encode_image(p) for p in chart_paths]
 
     chart_titles = [
@@ -70,7 +74,7 @@ def export_html(
 
     html = _build_html(
         narrative_text, stats_html, anomaly_html, quality_html,
-        images_b64, chart_titles, schema,
+        power_curve_html, images_b64, chart_titles, schema,
     )
 
     base_filename = f"report_{date.today().isoformat()}.html"
@@ -236,11 +240,52 @@ def _render_anomaly_summary(results: dict) -> str:
     )
 
 
+def _render_power_curve_table(power_curve_df: pd.DataFrame, cfg: dict) -> str:
+    """
+    Build the measured power curve table (IEC 61400-12-1 bins), with
+    the data-sufficiency flag rendered as Yes/No. Headers come from
+    narrative.power_curve_headers — one definition shared with the
+    Excel sheet.
+
+    Parameters:
+        power_curve_df (pd.DataFrame): analyse's power-curve result
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        str: complete HTML section, or "" for an empty curve
+    """
+    if power_curve_df.empty:
+        return ""
+
+    headers = narrative.power_curve_headers(cfg)
+    bin_header = narrative.power_curve_bin_header(cfg)
+
+    header_cells = f"<th>{bin_header}</th>" + "".join(
+        f"<th>{label}</th>" for label in headers.values()
+    )
+    rows_html = "".join(
+        f"<tr><td>{interval}</td>"
+        + f"<td>{row['mean_secondary']:.2f}</td>"
+        + f"<td>{row['mean_primary']:,.1f}</td>"
+        + f"<td>{row['mean_reference']:,.1f}</td>"
+        + f"<td>{int(row['count']):,}</td>"
+        + f"<td>{'Yes' if row['sufficient'] else 'No'}</td></tr>"
+        for interval, row in power_curve_df.iterrows()
+    )
+    section = config.POWER_CURVE_SHEET_NAME
+    return (
+        f"<h2>{section}</h2>"
+        f"<table><thead><tr>{header_cells}</tr></thead>"
+        f"<tbody>{rows_html}</tbody></table>"
+    )
+
+
 def _build_html(
     narrative_text: str,
     stats_rows_html: str,
     anomaly_html: str,
     quality_html: str,
+    power_curve_html: str,
     images_b64: list[str],
     chart_titles: list[str],
     schema: str,
@@ -253,6 +298,8 @@ def _build_html(
         stats_rows_html (str): <tr> rows for the stats table
         anomaly_html (str): anomaly summary HTML block
         quality_html (str): data quality note HTML block
+        power_curve_html (str): measured power curve section, or ""
+            when the schema has no power-curve analysis
         images_b64 (list[str]): base64 data URIs, one per chart
         chart_titles (list[str]): plain-English titles, same order
         schema (str): active schema name — used via the registry's
@@ -300,6 +347,8 @@ def _build_html(
 
   <h2>Data Quality</h2>
   {quality_html}
+
+  {power_curve_html}
 
   <h2>Charts</h2>
   {charts_html}

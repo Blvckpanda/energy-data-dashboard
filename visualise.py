@@ -40,6 +40,8 @@ def visualise(
         results (dict[str, pd.DataFrame]): the full results dict
             from analyse.analyse(). Must contain keys:
             'daily', 'daily_mean', 'efficiency', 'monthly', 'anomalies'.
+            May contain 'power_curve' (switches the scatter's
+            reference line to the measured binned curve).
         schema (str): active schema name — selects labels and scatter
                       reference behaviour from config.SCHEMA_REGISTRY
         charts_dir (Path | None): directory to write .png files to.
@@ -61,7 +63,7 @@ def visualise(
 
     paths = [
         _plot_power_trend(results["daily"], labels["primary"], out_dir),
-        _plot_scatter(results["efficiency"], cfg, labels, out_dir),
+        _plot_scatter(results["efficiency"], results, cfg, labels, out_dir),
         _plot_monthly_bar(results["monthly"], labels["primary"], out_dir),
         _plot_anomaly_timeline(
             results["daily_mean"], results["anomalies"], cfg,
@@ -109,20 +111,24 @@ def _plot_power_trend(
 
 
 def _plot_scatter(
-    efficiency_df: pd.DataFrame, cfg: dict, labels: dict, out_dir: Path
+    efficiency_df: pd.DataFrame, results: dict, cfg: dict,
+    labels: dict, out_dir: Path,
 ) -> Path:
     """
     Generate a scatter plot of secondary vs primary power.
 
-    The reference series is chosen by the registry's
-    scatter_reference kind:
-        "column"   — plot reference_col over the data (a theoretical
-                     curve shipped with the dataset, e.g. wind)
-        "identity" — plot the ideal 1:1 y=x line (no theoretical
-                     reference exists, e.g. solar AC vs DC)
+    The reference line is chosen by registry-driven availability:
+        power_curve — plot the measured binned power curve
+                      (analyse's IEC 61400-12-1-style bins) at bin
+                      midpoints — the credible reference for wind
+        "column"    — fall back to the dataset's shipped theoretical
+                      curve (no measured curve exists, e.g. hydro)
+        "identity"  — plot the ideal 1:1 y=x line (no reference
+                      exists, e.g. solar AC vs DC)
 
     Parameters:
         efficiency_df (pd.DataFrame): efficiency/conversion result
+        results (dict): full analysis results; may carry 'power_curve'
         cfg (dict): schema config from SCHEMA_REGISTRY
         labels (dict): plain-English axis labels
         out_dir (Path): directory to save the .png file to
@@ -144,23 +150,16 @@ def _plot_scatter(
         label="Actual Output",
     )
 
-    # Reference line — dispatched on registry kind
-    if cfg["scatter_reference"] == "column":
-        ax.plot(
-            sorted_df[cfg["secondary_col"]],
-            sorted_df[cfg["reference_col"]],
-            linewidth=1.5,
-            color=sns.color_palette("muted")[2],
-            label="Theoretical Power Curve",
-        )
-    else:  # "identity" — ideal 1:1 conversion line (y = x)
-        x_vals = sorted_df[cfg["secondary_col"]]
-        ax.plot(
-            x_vals, x_vals,
-            linewidth=1.5,
-            color=sns.color_palette("muted")[2],
-            label="Ideal 1:1 Conversion",
-        )
+    # Reference line — resolved registry-driven: the measured IEC
+    # binned curve when the analysis produced one, else the
+    # scatter_reference kind
+    x_ref, y_ref, ref_label = _reference_series(results, cfg, sorted_df)
+    ax.plot(
+        x_ref, y_ref,
+        linewidth=1.5,
+        color=sns.color_palette("muted")[2],
+        label=ref_label,
+    )
 
     ax.set_title(
         f"{labels['secondary']} vs {labels['primary']} "
@@ -178,6 +177,46 @@ def _plot_scatter(
     plt.close(fig)
 
     return out_path
+
+
+def _reference_series(
+    results: dict, cfg: dict, sorted_df: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series, str]:
+    """
+    Resolve the scatter's reference line, registry-driven.
+
+    Priority: the measured binned power curve when the schema's
+    analysis produced one (plotted at bin midpoints — the IEC 61400-
+    12-1-style measured curve); otherwise the registry's
+    scatter_reference kind:
+        "column"   — the dataset's shipped theoretical curve
+        "identity" — the ideal 1:1 y=x line
+
+    Parameters:
+        results (dict): full analysis results; may carry 'power_curve'
+        cfg (dict): schema config from SCHEMA_REGISTRY
+        sorted_df (pd.DataFrame): efficiency frame sorted by the
+                                  secondary column (fallback paths)
+
+    Returns:
+        tuple: (x series, y series, legend label)
+    """
+    power_curve = results.get("power_curve")
+    if power_curve is not None and not power_curve.empty:
+        x = power_curve.index.map(
+            lambda interval: interval.left + (interval.right - interval.left) / 2
+        )
+        return x, power_curve["mean_primary"], (
+            "Measured Power Curve (IEC 61400-12-1 bins)"
+        )
+    if cfg["scatter_reference"] == "column":
+        return (
+            sorted_df[cfg["secondary_col"]],
+            sorted_df[cfg["reference_col"]],
+            "Theoretical Power Curve",
+        )
+    x_vals = sorted_df[cfg["secondary_col"]]
+    return x_vals, x_vals, "Ideal 1:1 Conversion"
 
 
 def _plot_monthly_bar(

@@ -5,6 +5,8 @@ Owns all analytical computations for the pipeline.
 Accepts a clean DataFrame from clean.py and returns a named dict
 of result DataFrames covering summary statistics, power curve
 efficiency, time-series aggregations, and distribution analysis.
+Schemas whose registry entry sets power_curve_bin_width additionally
+get a measured power curve on IEC 61400-12-1-style fixed-width bins.
 
 Schema-aware: column names, ratios, and the distribution analysis
 come from config.SCHEMA_REGISTRY. Dispatch keys off registry values
@@ -14,6 +16,8 @@ No files are written by this module. No output is produced.
 All results are returned in memory for use by visualise.py
 and export.py.
 """
+
+import math
 
 import pandas as pd
 
@@ -42,6 +46,9 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
                              timeline baseline, same units as the
                              raw rows plotted over it)
             'distribution' — schema-specific distribution analysis
+            'power_curve'  — measured power curve on IEC 61400-12-1-
+                             style bins (only when the schema's
+                             registry entry sets power_curve_bin_width)
 
     Assumptions:
         - datetime column is dtype datetime64 (required for resampling)
@@ -49,7 +56,7 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         - Input DataFrame is not modified in place
     """
     cfg = config.SCHEMA_REGISTRY[schema]
-    return {
+    results = {
         "stats":        _compute_stats(df, cfg),
         "efficiency":   _compute_efficiency(df, cfg),
         "monthly":      _compute_monthly(df, cfg),
@@ -57,6 +64,11 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
         "daily_mean":   _compute_daily_mean(df, cfg),
         "distribution": _compute_distribution(df, cfg),
     }
+    # Registry-driven: a schema opts into the measured power curve by
+    # declaring a bin width — no schema-name branch here.
+    if "power_curve_bin_width" in cfg:
+        results["power_curve"] = _compute_power_curve(df, cfg)
+    return results
 
 
 def _compute_stats(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
@@ -144,6 +156,79 @@ def _compute_efficiency(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     )
 
     return operational[efficiency_columns(cfg)]
+
+
+def _compute_power_curve(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """
+    Build the measured power curve on IEC 61400-12-1-style bins.
+
+    Operational readings (the same exclusion rule _compute_efficiency
+    applies) are grouped into fixed-width bins of the secondary column
+    — the wind speed, binned at 0.5 m/s per the standard's convention
+    — and each bin's mean output forms the measured curve.
+
+    Deviations from a full IEC 61400-12-1 measurement campaign are
+    disclosed rather than hidden: the source is pre-aggregated SCADA
+    data (10-minute rows), not raw sampled signals; the operational
+    filter replaces the standard's full data-validation criteria; and
+    no per-bin uncertainty quantification is attempted. The
+    'sufficient' column flags bins with at least
+    power_curve_min_samples samples — three 10-minute rows approximate
+    the 30 minutes of data the standard expects per bin.
+
+    Parameters:
+        df (pd.DataFrame): clean SCADA DataFrame
+        cfg (dict): schema config; needs power_curve_bin_width and
+                    power_curve_min_samples
+
+    Returns:
+        pd.DataFrame: one row per non-empty bin, indexed by the
+                      bin interval ({secondary_col}_bin), with columns
+                      mean_secondary, mean_primary, mean_reference,
+                      count (int64), sufficient (bool)
+    """
+    bin_width = cfg["power_curve_bin_width"]
+    min_samples = cfg["power_curve_min_samples"]
+    secondary = cfg["secondary_col"]
+
+    # Same operational-row exclusion _compute_efficiency applies, so
+    # every analysis surface describes the same rows
+    operational = df[
+        (df[cfg["reference_col"]] > cfg["min_reference"]) &
+        (df[cfg["primary_power_col"]] > cfg["min_primary"])
+    ]
+
+    if operational.empty:
+        print("[ANALYSE] Measured power curve: no operational rows to bin")
+        return pd.DataFrame(
+            columns=["mean_secondary", "mean_primary",
+                     "mean_reference", "count", "sufficient"],
+        )
+
+    # Left-closed bins [v, v+width) from 0, with one spare edge at the
+    # top so the maximum reading always lands inside the last bin
+    top_edge = math.ceil(operational[secondary].max() / bin_width) + 1
+    edges = [i * bin_width for i in range(top_edge + 1)]
+
+    binned = pd.cut(operational[secondary], bins=edges, right=False)
+    curve = operational.groupby(binned, observed=False).agg(
+        mean_secondary=(secondary, "mean"),
+        mean_primary=(cfg["primary_power_col"], "mean"),
+        mean_reference=(cfg["reference_col"], "mean"),
+        count=(secondary, "size"),
+    )
+    curve = curve[curve["count"] > 0]
+    curve.index.name = f"{secondary}_bin"
+    curve["sufficient"] = curve["count"] >= min_samples
+
+    sufficient = int(curve["sufficient"].sum())
+    print(
+        f"[ANALYSE] Measured power curve: {len(curve)} bins of "
+        f"{bin_width:g} {cfg['secondary_label'].split()[-1]}; "
+        f"{sufficient} meet the data-sufficiency minimum "
+        f"({min_samples}+ samples)"
+    )
+    return curve
 
 
 def _compute_monthly(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:

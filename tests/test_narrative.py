@@ -84,3 +84,38 @@ def test_narrative_anomaly_sentence(wind_df):
         assert f"{count} anomalous readings" in text
     else:
         assert "No anomalous readings" in text
+
+
+def test_narrative_wind_names_iec_61400_12_1(wind_df):
+    """The registry's methodology_note anchors wind to the binned
+    power-curve standard."""
+    results = _results_for(wind_df, "wind")
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    text = narrative.build_narrative(results, clean_df, "wind")
+    assert "IEC 61400-12-1" in text
+
+
+def test_narrative_solar_names_iec_61724_and_relabels_ratio(solar_df):
+    """Solar's performance-ratio naming follows the registry: the IEC
+    61724 note in the narrative and the relabelled headline row."""
+    results = _results_for(solar_df, "solar")
+    clean_df, _ = clean.clean(solar_df, schema="solar")
+
+    text = narrative.build_narrative(results, clean_df, "solar")
+    assert "IEC 61724" in text
+
+    labels = [
+        label for label, _ in narrative.build_headline_stats(
+            results, clean_df, config.SCHEMA_REGISTRY["solar"], None
+        )
+    ]
+    assert "Mean Performance Ratio" in labels
+    assert "Mean Conversion Ratio" not in labels
+
+
+def test_narrative_hydro_claims_no_iec_methodology(hydro_df):
+    """No methodology_note in the registry → no standard is named."""
+    results = _results_for(hydro_df, "hydro")
+    clean_df, _ = clean.clean(hydro_df, schema="hydro")
+    text = narrative.build_narrative(results, clean_df, "hydro")
+    assert "IEC" not in text

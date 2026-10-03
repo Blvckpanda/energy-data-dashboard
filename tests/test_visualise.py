@@ -95,4 +95,41 @@ def test_anomaly_timeline_plots_daily_mean_not_daily_total(wind_df):
     # contract between analyse and visualise
     daily_total = results["daily"][config.COL_ACTIVE_POWER].iloc[0]
     daily_mean = results["daily_mean"][config.COL_ACTIVE_POWER].iloc[0]
-    assert daily_mean < daily_total  # multi-row day: mean << sum
+    assert daily_mean < daily_total
+
+
+def test_scatter_reference_prefers_measured_iec_curve(wind_df):
+    """When the analysis produced a power curve, the scatter's reference
+    line is the measured IEC 61400-12-1 binned curve at bin midpoints."""
+    clean_df, _ = clean.clean(wind_df, schema="wind")
+    results = analyse.analyse(clean_df, schema="wind")
+
+    curve = results["power_curve"]
+    x_ref, y_ref, label = visualise._reference_series(
+        results, config.SCHEMA_REGISTRY["wind"], results["efficiency"]
+    )
+    assert label.startswith("Measured Power Curve (IEC 61400-12-1")
+    assert len(list(x_ref)) == len(curve)
+    assert list(y_ref) == list(curve["mean_primary"])
+
+
+def test_scatter_reference_falls_back_to_registry_kinds(solar_df, hydro_df):
+    """No measured curve → registry scatter_reference kinds, unchanged:
+    'column' (hydro) plots the shipped curve; 'identity' (solar) is y=x."""
+    for df, schema in ((hydro_df, "hydro"), (solar_df, "solar")):
+        clean_df, _ = clean.clean(df, schema=schema)
+        results = analyse.analyse(clean_df, schema=schema)
+        cfg = config.SCHEMA_REGISTRY[schema]
+
+        x_ref, y_ref, label = visualise._reference_series(
+            results, cfg, results["efficiency"].sort_values(cfg["secondary_col"])
+        )
+        if cfg["scatter_reference"] == "column":
+            assert label == "Theoretical Power Curve"
+            expected_y = results["efficiency"].sort_values(
+                cfg["secondary_col"]
+            )[cfg["reference_col"]]
+            assert list(y_ref) == list(expected_y)
+        else:
+            assert label == "Ideal 1:1 Conversion"
+            assert list(x_ref) == list(y_ref)  # multi-row day: mean << sum

@@ -125,6 +125,13 @@ HYDRO_MIN_THEORETICAL = 0  # exclusive — Theoretical_Potential > 0 required
 #                        {"kind": "group_mean", "group_col",
 #                         "value_col"}                         (mean
 #                        of one value per group of another)
+#   power_curve_bin_width   optional — width of the IEC 61400-12-1 style
+#                        wind-speed bins for the measured power curve;
+#                        presence of this key enables the result
+#   power_curve_min_samples optional — samples per bin treated as data-
+#                        sufficient (IEC expects ≥30 minutes of data)
+#   methodology_note        optional — one plain-English sentence naming
+#                        the industry methodology the analysis follows
 SCHEMA_REGISTRY = {
     "wind": {
         "required_columns": [
@@ -153,6 +160,13 @@ SCHEMA_REGISTRY = {
             COL_WIND_DIRECTION: "Wind Direction (°)",
         },
         "interval_minutes":     10,
+        "power_curve_bin_width":   0.5,   # IEC 61400-12-1: 0.5 m/s bins
+        "power_curve_min_samples": 3,     # 3 × 10-min rows ≈ 30 min of data
+        "methodology_note":     "The measured power curve follows the "
+                                "IEC 61400-12-1 binned methodology: operational "
+                                "readings are grouped into 0.5 m/s wind-speed "
+                                "bins, and the bin means form the measured "
+                                "curve.",
         "scatter_reference":    "column",
         "distribution": {
             "kind": "bins",
@@ -177,7 +191,7 @@ SCHEMA_REGISTRY = {
         "min_reference":        CONVERSION_MIN_DC,
         "primary_label":        "AC Power (kW)",
         "secondary_label":      "DC Power (kW)",
-        "ratio_label":          "Conversion Ratio",
+        "ratio_label":          "Performance Ratio",
         "asset_label":          "Solar Power",
         "display_names": {
             COL_SOLAR_DATETIME: "Timestamp",
@@ -189,6 +203,10 @@ SCHEMA_REGISTRY = {
             COL_TOTAL_YIELD:    "Total Yield (kWh)",
         },
         "interval_minutes":     15,
+        "methodology_note":     "The performance ratio follows the IEC 61724 "
+                                "methodology (AC output against DC input); "
+                                "irradiance and temperature corrections are "
+                                "out of scope for this SCADA dataset.",
         "scatter_reference":    "identity",
         "distribution": {
             "kind":       "group_mean",
@@ -235,3 +253,9 @@ SCHEMA_REGISTRY = {
 ANOMALY_STD_THRESHOLD    = 2.0   # std deviations from mean to flag
 ANOMALY_ROLLING_WINDOW   = 36    # intervals (36 × 10-min = 6 hours)
 ANOMALY_ROLLING_DROP_PCT = 0.20  # rolling mean drop % to flag
+
+# ── Power Curve Report Surface ────────────────────────────────
+# Shared name for the Excel sheet and HTML section presenting the
+# measured power curve (schemas whose registry entry sets
+# power_curve_bin_width)
+POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1)"

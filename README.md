@@ -13,7 +13,9 @@ Turbine — cleans and validates it, runs structured analysis including
 anomaly detection, and exports a multi-sheet Excel report and a
 self-contained shareable HTML report, both with embedded charts and
 plain-English summaries. The pipeline computes efficiency against
-reference benchmarks, generates time-series and distribution
+reference benchmarks, measures a binned power curve following the
+IEC 61400-12-1 methodology for wind, reports solar's performance
+ratio under IEC 61724 naming, generates time-series and distribution
 visualisations, flags anomalous readings using statistical and
 rolling-window methods, and maintains an append-only audit log keyed
 by run ID across every execution — directly mirroring data workflows
@@ -211,7 +213,8 @@ overwritten.)
 
 ## Output
 
-**`output/report_YYYY-MM-DD.xlsx`** — seven-sheet Excel workbook:
+**`output/report_YYYY-MM-DD.xlsx`** — Excel workbook with seven base
+sheets (eight for schemas that enable the measured power curve):
 
 | Sheet | Contents |
 | ----- | -------- |
@@ -219,14 +222,16 @@ overwritten.)
 | Clean Data | Full cleaned dataset, plain-English headers |
 | Trend Analysis | Monthly mean, daily total, and daily mean power |
 | Efficiency Analysis | Per-row efficiency/conversion ratios |
+| Power Curve (IEC 61400-12-1) | Measured binned power curve (wind schema) |
 | Charts | All four embedded chart images |
 | Anomaly Report | Flagged anomalous readings with detection method |
 | Data Quality Log | Cleaning decisions for this run, keyed by `run_id` |
 
 **`output/report_YYYY-MM-DD.html`** — self-contained single-file
 report with the same narrative, statistics, anomaly summary, data
-quality note, and charts embedded as base64 images. Opens offline,
-shareable as one file, deployable to GitHub Pages.
+quality note, measured power-curve table (where the schema enables
+it), and charts embedded as base64 images. Opens offline, shareable
+as one file, deployable to GitHub Pages.
 
 **`output/charts/`** — four standalone chart images:
 
@@ -295,11 +300,12 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-62 tests cover schema validation (including registry integrity),
-cleaning rules, efficiency exclusion logic, anomaly detection,
-narrative construction, chart generation, both report exporters,
-batch mode, and end-to-end runs for every registered schema — all
-on synthetic data, no dataset required.
+83 tests cover schema validation (including registry integrity),
+cleaning rules, efficiency exclusion logic, IEC-style power-curve
+binning and data sufficiency, anomaly detection, narrative
+construction, chart generation, both report exporters, batch mode,
+and end-to-end runs for every registered schema — all on synthetic
+data, no dataset required.
 
 ## Linting
 

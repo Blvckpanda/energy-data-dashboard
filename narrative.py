@@ -71,6 +71,50 @@ def build_headline_stats(
     return rows
 
 
+def power_curve_bin_header(cfg: dict) -> str:
+    """
+    Plain-English header for the measured power curve's bin column,
+    derived from the registry's secondary label (e.g. wind speed
+    "Wind Speed (m/s)" → "Wind Speed Bin (m/s)").
+
+    Shared by both exporters so the Excel sheet and the HTML section
+    cannot disagree on the label.
+
+    Parameters:
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        str: header for the bin column
+    """
+    base = cfg["secondary_label"].split(" (")[0]
+    unit = cfg["secondary_label"].rsplit("(", 1)[-1].rstrip(")")
+    return f"{base} Bin ({unit})"
+
+
+def power_curve_headers(cfg: dict) -> dict:
+    """
+    Plain-English headers for the measured power curve's data
+    columns — one definition consumed by both exporters (the bin
+    column header comes from power_curve_bin_header).
+
+    Parameters:
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        dict: mapping of power-curve DataFrame columns to headers
+    """
+    reference_display = cfg["display_names"].get(
+        cfg["reference_col"], cfg["reference_col"]
+    )
+    return {
+        "mean_secondary": f"Mean {cfg['secondary_label']}",
+        "mean_primary":   f"Mean {cfg['primary_label']}",
+        "mean_reference": f"Mean {reference_display}",
+        "count":          "Samples",
+        "sufficient":     "Data Sufficient",
+    }
+
+
 def build_narrative(results: dict, clean_df: pd.DataFrame, schema: str) -> str:
     """
     Build the 3-5 sentence narrative paragraph for the given schema.
@@ -110,6 +154,14 @@ def build_narrative(results: dict, clean_df: pd.DataFrame, schema: str) -> str:
     pattern = _notable_pattern(results, cfg)
 
     narrative = f"{opening} {pattern}"
+
+    # Methodology sentence: registry-driven, present only for schemas
+    # that declare one — anchors the analysis to a named industry
+    # standard (e.g. IEC 61400-12-1, IEC 61724)
+    methodology_note = cfg.get("methodology_note")
+    if methodology_note:
+        narrative += f" {methodology_note}"
+
     anomaly_count = len(results.get("anomalies", []))
     if anomaly_count > 0:
         narrative += (
