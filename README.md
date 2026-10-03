@@ -7,6 +7,11 @@
 ![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
 ![Tests](https://github.com/Blvckpanda/energy-data-dashboard/actions/workflows/tests.yml/badge.svg)
 
+**[▶ View the live demo report](https://blvckpanda.github.io/energy-data-dashboard/)**
+— a real 50,530-row wind-turbine SCADA run (50,530 rows analysed,
+IEC 61400-12-1 binned power curve, all charts embedded), served via
+GitHub Pages.
+
 A schema-agnostic Python pipeline that ingests operational SCADA data
 from CSV files — Wind Turbine, Solar Power Generation, or Hydro
 Turbine — cleans and validates it, runs structured analysis including
@@ -30,6 +35,21 @@ reporting skills using industry-standard Python tooling.
 ![Summary Sheet](docs/screenshots/summary_sheet.png)
 ![Sample Chart](docs/screenshots/chart_sample.png)
 ![Terminal Output](docs/screenshots/terminal_output.png)
+
+---
+
+## Live Demo
+
+The **[live demo](https://blvckpanda.github.io/energy-data-dashboard/)**
+is the pipeline's self-contained HTML report for the real wind
+SCADA dataset, committed at `docs/index.html` and served by GitHub
+Pages (branch `main`, path `/docs`). It is a build artefact, not
+source code — refresh it by regenerating from the dataset:
+
+```bash
+python main.py --file data/turbine.csv --format html --output docs
+mv docs/report_YYYY-MM-DD.html docs/index.html   # then commit
+```
 
 ---
 
@@ -346,6 +366,7 @@ energy-data-dashboard/
 ├── output/               # Generated reports and charts (gitignored)
 ├── logs/                 # data_quality.log (gitignored)
 ├── docs/screenshots/     # README images
+├── docs/index.html       # Live demo report (GitHub Pages artefact)
 ├── docs/archive/          # Historical build docs (unit specs, tracker)
 │
 └── context/              # Living architecture and reference docs
