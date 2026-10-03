@@ -174,3 +174,23 @@ def test_schema_choices_come_from_registry(capsys):
     out = capsys.readouterr().out
     for schema_name in config.SCHEMA_REGISTRY:
         assert schema_name in out
+
+
+def test_load_print_shared_between_single_and_batch(
+    wind_df, batch_folder, tmp_path, monkeypatch, capsys
+):
+    """One [LOAD] line definition serves both run modes."""
+    _isolate(tmp_path, monkeypatch)
+
+    csv_path = tmp_path / "synthetic_wind.csv"
+    wind_df.to_csv(csv_path, index=False)
+
+    main.run_single(csv_path, tmp_path / "out_single", schema="wind", fmt="excel")
+    single_out = capsys.readouterr().out
+    assert "[LOAD] 20 rows × 5 columns" in single_out
+
+    main.run_batch(batch_folder, tmp_path / "out_batch", schema="wind", fmt="excel")
+    batch_out = capsys.readouterr().out
+    # Two valid files print [LOAD]; broken.csv fails validation before it
+    assert batch_out.count("[LOAD]") == 2
+    assert "[LOAD] 20 rows × 5 columns" in batch_out

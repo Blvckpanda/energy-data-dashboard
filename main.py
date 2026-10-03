@@ -54,6 +54,23 @@ def _print_clean_summary(rows_before: int, rows_after: int) -> None:
     )
 
 
+def _print_load_summary(df: pd.DataFrame) -> None:
+    """
+    Print the [LOAD] stage summary line shared by both run modes.
+
+    Called immediately after a file passes schema validation, so the
+    printed row/column counts always describe a file the pipeline
+    accepted.
+
+    Parameters:
+        df (pd.DataFrame): the raw DataFrame just loaded and validated
+
+    Returns:
+        None
+    """
+    print(f"[LOAD] {len(df):,} rows × {len(df.columns)} columns")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     Parse and return command-line arguments.
@@ -143,7 +160,7 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     try:
         raw_df = ingest.load_csv(file_path)
         ingest.validate_schema(raw_df, schema)
-        print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
+        _print_load_summary(raw_df)
     except SystemExit:
         raise
     except Exception as e:
@@ -213,7 +230,7 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
         try:
             raw_df = ingest.load_csv(csv_path)
             ingest.validate_schema(raw_df, schema)
-            print(f"[LOAD] {len(raw_df):,} rows × {len(raw_df.columns)} columns")
+            _print_load_summary(raw_df)
         except SystemExit as e:
             print(f"[SKIP] {csv_path.name} — {e}")
             continue
