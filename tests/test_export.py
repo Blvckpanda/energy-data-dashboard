@@ -14,7 +14,8 @@ import export
 
 EXPECTED_SHEETS = [
     "Summary", "Clean Data", "Trend Analysis", "Efficiency Analysis",
-    "Charts", "Anomaly Report", "Data Quality Log",
+    config.POWER_CURVE_SHEET_NAME, "Charts", "Anomaly Report",
+    "Data Quality Log",
 ]
 
 
@@ -37,6 +38,25 @@ def test_export_creates_seven_sheets_in_order(built):
     path = export.export(clean_df, results, chart_paths, run_id, output_dir, "wind")
     wb = openpyxl.load_workbook(path)
     assert wb.sheetnames == EXPECTED_SHEETS
+
+
+@pytest.mark.parametrize("schema", ["solar", "hydro"])
+def test_export_no_power_curve_sheet_without_registry_opt_in(
+    schema, solar_df, hydro_df, wind_harness,
+):
+    """Schemas without the registry's bin width get the original seven
+    sheets — the curve sheet exists only where the analysis produced a
+    curve."""
+    dfs = {"solar": solar_df, "hydro": hydro_df}
+    df = dfs[schema]
+    build, output_dir, _ = wind_harness
+    clean_df, run_id, results, chart_paths = build(df, schema=schema)
+    path = export.export(
+        clean_df, results, chart_paths, run_id, output_dir, schema
+    )
+    wb = openpyxl.load_workbook(path)
+    assert config.POWER_CURVE_SHEET_NAME not in wb.sheetnames
+    assert len(wb.sheetnames) == 7
 
 
 def test_summary_contains_narrative_and_no_raw_column_keys(built):
@@ -150,3 +170,25 @@ def test_efficiency_headers_follow_analyse_column_selection(schema):
     for col, label in headers.items():
         if col != cfg["ratio_name"]:
             assert label == cfg["display_names"].get(col, col)
+
+
+def test_power_curve_sheet_written_with_plain_headers(built):
+    """The curve sheet's headers come from the shared builder in
+    narrative.py — the Excel sheet cannot drift from the HTML table."""
+    import narrative
+
+    clean_df, run_id, results, chart_paths, output_dir = built
+    path = export.export(clean_df, results, chart_paths, run_id, output_dir, "wind")
+    wb = openpyxl.load_workbook(path)
+    ws = wb[config.POWER_CURVE_SHEET_NAME]
+
+    cfg = config.SCHEMA_REGISTRY["wind"]
+    expected_headers = set(
+        narrative.power_curve_headers(cfg).values()
+    ) | {narrative.power_curve_bin_header(cfg)}
+    header_row = {
+        ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)
+    }
+    assert header_row == expected_headers
+    # A data row exists: the synthetic fixture's speed spread spans bins
+    assert ws.max_row >= 2

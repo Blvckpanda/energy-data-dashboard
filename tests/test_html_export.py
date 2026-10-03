@@ -92,7 +92,11 @@ def test_html_stats_match_excel_stats(built):
     )
     html = path.read_text(encoding="utf-8")
 
-    html_labels = set(re.findall(r"<tr><td>([^<]+)</td><td>", html))
+    # Scope to the Headline Statistics table: later sections (the
+    # power-curve table, when present) also contain <td> cells
+    stats_section = html.split("<h2>Headline Statistics</h2>", 1)[1]
+    stats_section = stats_section.split("<h2>", 1)[0]
+    html_labels = set(re.findall(r"<tr><td>([^<]+)</td><td>", stats_section))
     expected_labels = {
         label for label, _ in narrative.build_headline_stats(
             results, clean_df, config.SCHEMA_REGISTRY["wind"], [run_id]
@@ -124,3 +128,34 @@ def test_charts_dir_parameter_writes_isolated_charts(solar_df, wind_harness):
     assert {p.name for p in chart_paths} == expected
     assert all(p.parent == charts_dir for p in chart_paths)
     assert all(p.stat().st_size > 0 for p in chart_paths)
+
+
+def test_html_contains_power_curve_section(built):
+    """Wind: the IEC 61400-12-1 table is present with the shared
+    headers and the measured bins; sufficiency renders as Yes/No."""
+    import narrative
+
+    clean_df, run_id, results, chart_paths, output_dir = built
+    path = html_export.export_html(
+        clean_df, results, chart_paths, "wind", output_dir, run_id,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    cfg = config.SCHEMA_REGISTRY["wind"]
+    assert f"<h2>{config.POWER_CURVE_SHEET_NAME}</h2>" in html
+    assert narrative.power_curve_bin_header(cfg) in html
+    assert "Data Sufficient" in html
+    assert "<td>Yes</td>" in html or "<td>No</td>" in html
+
+
+def test_html_no_power_curve_section_for_solar(solar_df, wind_harness):
+    """Solar has no registry opt-in → no curve section between Data
+    Quality and Charts."""
+    build, output_dir, _ = wind_harness
+    clean_df, run_id, results, chart_paths = build(solar_df, schema="solar")
+    path = html_export.export_html(
+        clean_df, results, chart_paths, "solar", output_dir, run_id,
+    )
+    html = path.read_text(encoding="utf-8")
+    assert config.POWER_CURVE_SHEET_NAME not in html
+    assert "<h2>Data Quality</h2>" in html
