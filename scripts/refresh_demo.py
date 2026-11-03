@@ -26,12 +26,18 @@ Usage:
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 import tempfile
 from datetime import date
 from pathlib import Path
+
+# scripts/ is not a package and the CLI entry point is `python
+# scripts/refresh_demo.py` — rebalance sys.path so root modules are
+# importable (see pyproject.toml's E402 exemption for this file).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
 
@@ -166,6 +172,10 @@ def generate_report(
             ],
             check=True,
             cwd=config.PROJECT_ROOT,
+            # Windows pipes encode output with cp1252, which crashes on
+            # the pipeline's '→' separation arrow — force UTF-8 for the
+            # child so captured output matches interactive-terminal runs.
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"Pipeline run failed (exit {e.returncode}).")
@@ -263,7 +273,7 @@ def main() -> None:
 
     stamped = stamp_html(html, generated_on=date.today().isoformat(), sha=sha)
     args.docs.write_text(stamped, encoding="utf-8")
-    print(f"Demo refreshed → {args.docs} (generated at {sha[:7]})")
+    print(f"Demo refreshed -> {args.docs} (generated at {sha[:7]})")
 
     if args.commit:
         commit_demo(args.docs)
