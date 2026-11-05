@@ -191,7 +191,7 @@ SCHEMA_REGISTRY = {
         "min_reference":        CONVERSION_MIN_DC,
         "primary_label":        "AC Power (kW)",
         "secondary_label":      "DC Power (kW)",
-        "ratio_label":          "Performance Ratio",
+        "ratio_label":          "AC/DC Conversion Ratio",
         "asset_label":          "Solar Power",
         "display_names": {
             COL_SOLAR_DATETIME: "Timestamp",
@@ -203,10 +203,10 @@ SCHEMA_REGISTRY = {
             COL_TOTAL_YIELD:    "Total Yield (kWh)",
         },
         "interval_minutes":     15,
-        "methodology_note":     "The performance ratio follows the IEC 61724 "
-                                "methodology (AC output against DC input); "
-                                "irradiance and temperature corrections are "
-                                "out of scope for this SCADA dataset.",
+        "methodology_note":     "This ratio is inverter AC-DC conversion efficiency, not "
+                                "the IEC 61724 performance ratio, which needs plane-of-array "
+                                "irradiance data. The standard-based metric is a planned "
+                                "future extension.",
         "scatter_reference":    "identity",
         "distribution": {
             "kind":       "group_mean",

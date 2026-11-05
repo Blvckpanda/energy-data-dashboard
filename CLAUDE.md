@@ -7,7 +7,7 @@ under `docs/archive/`. Do not duplicate rule text in other files.
 
 ## What This Project Is
 
-A schema-agnostic CLI pipeline: SCADA CSVs in (wind / solar / hydro),
+A registry-driven, multi-schema CLI pipeline: SCADA CSVs in (wind / solar / hydro),
 cleaned, analysed, anomaly-flagged, and exported as Excel + HTML
 reports with charts, a plain-English narrative, and an append-only
 quality log. Every schema-specific behaviour is a key in

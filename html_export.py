@@ -7,7 +7,7 @@ base64 data URIs — no external CSS, JS, or image file dependencies.
 The file opens correctly offline and is safe to share as a single
 attachment or deploy to GitHub Pages.
 
-Fully schema-agnostic: statistics labels and the report title come
+Fully registry-driven: statistics labels and the report title come
 from config.SCHEMA_REGISTRY — adding a schema requires no changes
 here.
 

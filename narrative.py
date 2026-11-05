@@ -3,8 +3,8 @@ narrative.py
 
 Owns the shared summary content consumed by both exporters:
 the narrative paragraph and the headline-statistics rows.
-Produces schema-agnostic, plain-English output from real
-computed analysis values, so the Excel and HTML reports can
+Produces plain-English output from real computed
+analysis values, so the Excel and HTML reports can
 never drift apart in what they claim.
 
 Fully registry-driven: hours per row come from the schema's

@@ -8,7 +8,7 @@ workbook — seven base sheets, plus the measured power-curve sheet
 when the schema's registry entry enables it — and returns the
 output file path.
 
-Fully schema-agnostic: sheet headers, narrative text, and statistics
+Fully registry-driven: sheet headers, narrative text, and statistics
 labels come from config.SCHEMA_REGISTRY — adding a schema requires
 no changes here.
 

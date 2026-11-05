@@ -9,18 +9,19 @@
 
 **[▶ View the live demo report](https://blvckpanda.github.io/energy-data-dashboard/)**
 — a real 50,530-row wind-turbine SCADA run (50,530 rows analysed,
-IEC 61400-12-1 binned power curve, all charts embedded), served via
-GitHub Pages.
+IEC 61400-12-1-style 0.5 m/s binned power curve, all charts embedded),
+served via GitHub Pages.
 
-A schema-agnostic Python pipeline that ingests operational SCADA data
+A registry-driven, multi-schema Python pipeline that ingests operational SCADA data
 from CSV files — Wind Turbine, Solar Power Generation, or Hydro
 Turbine — cleans and validates it, runs structured analysis including
 anomaly detection, and exports a multi-sheet Excel report and a
 self-contained shareable HTML report, both with embedded charts and
 plain-English summaries. The pipeline computes efficiency against
-reference benchmarks, measures a binned power curve following the
-IEC 61400-12-1 methodology for wind, reports solar's performance
-ratio under IEC 61724 naming, generates time-series and distribution
+reference benchmarks, measures a wind power curve binned in IEC
+61400-12-1 style at 0.5 m/s intervals, reports solar's AC/DC
+conversion ratio under an honest interim label, generates
+time-series and distribution
 visualisations, flags anomalous readings using statistical and
 rolling-window methods, and maintains an append-only audit log keyed
 by run ID across every execution — directly mirroring data workflows
@@ -249,7 +250,7 @@ sheets (eight for schemas that enable the measured power curve):
 | Clean Data | Full cleaned dataset, plain-English headers |
 | Trend Analysis | Monthly mean, daily total, and daily mean power |
 | Efficiency Analysis | Per-row efficiency/conversion ratios |
-| Power Curve (IEC 61400-12-1) | Measured binned power curve (wind schema) |
+| Power Curve (IEC 61400-12-1 style) | Measured binned power curve (wind schema) |
 | Charts | All four embedded chart images |
 | Anomaly Report | Flagged anomalous readings with detection method |
 | Data Quality Log | Cleaning decisions for this run, keyed by `run_id` |
@@ -276,7 +277,8 @@ as one file, deployable to GitHub Pages.
 
 ## Pipeline Architecture
 
-The pipeline is schema-agnostic, driven by a `SCHEMA_REGISTRY` in
+The pipeline is registry-driven and multi-schema, driven by a
+`SCHEMA_REGISTRY` in
 `config.py` that tells every module which columns, thresholds,
 labels, analysis interval, scatter reference, and distribution
 method apply for the active `--schema`. Adding a schema (hydro was
