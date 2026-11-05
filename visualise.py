@@ -5,7 +5,7 @@ Owns chart generation and .png export to the charts directory.
 Accepts result DataFrames from analyse.py and saves one .png
 per chart. Returns a list of saved file paths for use by export.py.
 
-Fully schema-agnostic: axis labels, chart titles, and scatter
+Fully registry-driven: axis labels, chart titles, and scatter
 reference behaviour come from config.SCHEMA_REGISTRY — adding a
 schema requires no changes here.
 
@@ -207,7 +207,7 @@ def _reference_series(
             lambda interval: interval.left + (interval.right - interval.left) / 2
         )
         return x, power_curve["mean_primary"], (
-            "Measured Power Curve (IEC 61400-12-1 bins)"
+            "Measured Power Curve (IEC 61400-12-1-style bins)"
         )
     if cfg["scatter_reference"] == "column":
         return (

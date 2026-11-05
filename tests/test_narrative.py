@@ -95,21 +95,24 @@ def test_narrative_wind_names_iec_61400_12_1(wind_df):
     assert "IEC 61400-12-1" in text
 
 
-def test_narrative_solar_names_iec_61724_and_relabels_ratio(solar_df):
-    """Solar's performance-ratio naming follows the registry: the IEC
-    61724 note in the narrative and the relabelled headline row."""
+def test_narrative_solar_labels_ratio_honestly(solar_df):
+    """Solar's headline row follows the registry label (AC/DC
+    conversion ratio) and the narrative claims no IEC standard on this
+    dataset: 61724 needs plane-of-array irradiance, which solar SCADA
+    does not provide."""
     results = _results_for(solar_df, "solar")
     clean_df, _ = clean.clean(solar_df, schema="solar")
 
     text = narrative.build_narrative(results, clean_df, "solar")
-    assert "IEC 61724" in text
+    assert "conversion efficiency" in text
 
     labels = [
         label for label, _ in narrative.build_headline_stats(
             results, clean_df, config.SCHEMA_REGISTRY["solar"], None
         )
     ]
-    assert "Mean Performance Ratio" in labels
+    assert "Mean AC/DC Conversion Ratio" in labels
+    assert "Mean Performance Ratio" not in labels
     assert "Mean Conversion Ratio" not in labels
 
 

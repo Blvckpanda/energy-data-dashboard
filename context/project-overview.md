@@ -2,7 +2,7 @@
 
 ## Overview
 
-A schema-agnostic command-line Python pipeline that ingests raw
+A registry-driven, multi-schema command-line Python pipeline that ingests raw
 renewable-energy SCADA data — **wind turbine**, **solar plant**, or
 **hydro turbine** — from CSV files, cleans and validates it, runs
 structured analysis (summary statistics, per-row efficiency ratios,
@@ -96,7 +96,7 @@ and a distribution spec (`bins` or `group_mean`).
   analysis.
 
 ### Anomaly Detection
-- Two schema-agnostic methods on the primary power column: static
+- Two registry-driven methods on the primary power column: static
   threshold (> 2σ) and sustained-drop rolling window (36 intervals,
   20% below the operational mean). Thresholds in `config.py`.
 
@@ -132,18 +132,23 @@ and a distribution spec (`bins` or `group_mean`).
 - Anomaly detection (threshold + rolling window) with report sheets
 - Matplotlib/Seaborn chart generation (four charts per run)
 - Excel + self-contained HTML export
-- pytest suite (62 tests, fully synthetic data) with ruff gate in CI
+- pytest suite (87 tests, fully synthetic data) with ruff gate in CI
 - Docker packaging; `context/` reference documents
 
 ### Out of Scope
-- Web UI, GUI, or interactive dashboard of any kind
 - Live data feeds, API integrations, or database connectors
 - User accounts, authentication, or access control
 - Automated scheduling or task runners
-- Machine learning, forecasting, or predictive analytics
 - Cloud hosting or deployment
-- IEC-standard power-curve / performance-ratio methodologies
-  (documented as a future direction; not implemented)
+- A true IEC 61724 solar performance ratio (needs plane-of-array
+  irradiance data; the reported AC/DC conversion ratio is deliberately
+  labelled interim)
+
+### Planned Inside the Scope
+- A thin Streamlit web UI in this repo, layered over the pipeline
+  core once extraction is done (direction confirmed 2026-11-05)
+- Wind-power forecasting benchmark: decision deferred until the UI
+  ships; it would consume the pipeline's cleaned output if split out
 
 ## Success Criteria
 

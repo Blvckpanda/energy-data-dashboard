@@ -5,7 +5,7 @@ Owns anomaly detection for operational power output.
 Accepts a clean DataFrame and schema name, returns a DataFrame
 containing only the flagged anomalous rows with a reason column.
 
-Two detection methods, both schema-agnostic via SCHEMA_REGISTRY:
+Two detection methods, both driven by SCHEMA_REGISTRY:
   1. Static threshold — value deviates > N std devs from the
      operational mean
   2. Rolling window — sustained drop in a rolling mean vs the

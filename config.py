@@ -162,8 +162,8 @@ SCHEMA_REGISTRY = {
         "interval_minutes":     10,
         "power_curve_bin_width":   0.5,   # IEC 61400-12-1: 0.5 m/s bins
         "power_curve_min_samples": 3,     # 3 × 10-min rows ≈ 30 min of data
-        "methodology_note":     "The measured power curve follows the "
-                                "IEC 61400-12-1 binned methodology: operational "
+        "methodology_note":     "The measured power curve uses IEC "
+                                "61400-12-1-style 0.5 m/s binning: operational "
                                 "readings are grouped into 0.5 m/s wind-speed "
                                 "bins, and the bin means form the measured "
                                 "curve.",
@@ -191,7 +191,7 @@ SCHEMA_REGISTRY = {
         "min_reference":        CONVERSION_MIN_DC,
         "primary_label":        "AC Power (kW)",
         "secondary_label":      "DC Power (kW)",
-        "ratio_label":          "Performance Ratio",
+        "ratio_label":          "AC/DC Conversion Ratio",
         "asset_label":          "Solar Power",
         "display_names": {
             COL_SOLAR_DATETIME: "Timestamp",
@@ -203,10 +203,10 @@ SCHEMA_REGISTRY = {
             COL_TOTAL_YIELD:    "Total Yield (kWh)",
         },
         "interval_minutes":     15,
-        "methodology_note":     "The performance ratio follows the IEC 61724 "
-                                "methodology (AC output against DC input); "
-                                "irradiance and temperature corrections are "
-                                "out of scope for this SCADA dataset.",
+        "methodology_note":     "This ratio is inverter AC-DC conversion efficiency, not "
+                                "the IEC 61724 performance ratio, which needs plane-of-array "
+                                "irradiance data. The standard-based metric is a planned "
+                                "future extension.",
         "scatter_reference":    "identity",
         "distribution": {
             "kind":       "group_mean",
@@ -258,4 +258,4 @@ ANOMALY_ROLLING_DROP_PCT = 0.20  # rolling mean drop % to flag
 # Shared name for the Excel sheet and HTML section presenting the
 # measured power curve (schemas whose registry entry sets
 # power_curve_bin_width)
-POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1)"
+POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1 style)"
