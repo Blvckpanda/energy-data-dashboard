@@ -1,0 +1,51 @@
+name: Live demo freshness
+
+# docs/index.html is a committed build artefact (data/ is gitignored,
+# so CI cannot rebuild it). This job fails when report-producing code
+# changed since the demo was last generated — the provenance stamp
+# `<!-- demo-sha: <sha> -->` written by scripts/refresh_demo.py is the
+# source of truth. Regenerate with: python scripts/refresh_demo.py
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - ".github/workflows/demo-freshness.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - ".github/workflows/demo-freshness.yml"
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: we diff against the stamp's SHA
+
+      - name: Check the demo is fresh
+        run: |
+          sha=$(grep -o 'demo-sha: [0-9a-f]\{40\}' docs/index.html \
+            | head -1 | awk '{print $2}')
+          if [ -z "$sha" ]; then
+            echo "::error::docs/index.html has no demo-sha stamp."
+            echo "Regenerate it: python scripts/refresh_demo.py"
+            exit 1
+          fi
+
+          changed=$(git diff --name-only "${sha}..${GITHUB_SHA}" \
+            -- '*.py' 'requirements*.txt')
+          if [ -n "$changed" ]; then
+            echo "::error::Report-producing code changed since the committed demo was generated (${sha}). Regenerate it: python scripts/refresh_demo.py"
+            echo "  python scripts/refresh_demo.py"
+            echo "Changed files:"
+            echo "$changed"
+            exit 1
+          fi
+
+          echo "Live demo is fresh (generated at commit ${sha})."

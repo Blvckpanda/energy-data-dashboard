@@ -44,14 +44,21 @@ The **[live demo](https://blvckpanda.github.io/energy-data-dashboard/)**
 is the pipeline's self-contained HTML report for the real wind
 SCADA dataset, committed at `docs/index.html` and served by GitHub
 Pages (branch `main`, path `/docs`). It is a build artefact, not
-source code — refresh it by regenerating from the dataset:
+source code — refresh it with one command (requires a local copy of
+the gitignored dataset in `data/turbine.csv`):
 
 ```bash
-python main.py --file data/turbine.csv --format html --output docs
-mv docs/report_YYYY-MM-DD.html docs/index.html   # then commit
+python scripts/refresh_demo.py        # regenerate, stamp and overwrite
 ```
 
----
+The script runs the real CLI, copies the report over `docs/index.html`,
+and stamps it with the git SHA that produced it. It never touches the
+project's `output/` directory — the report is built in a temporary one.
+CI enforces freshness: the **Live demo freshness** workflow fails any
+commit that changes report-producing code (any `*.py` or
+`requirements*.txt`) without regenerating the demo.
+
+```
 
 ## Stack
 
@@ -361,7 +368,9 @@ energy-data-dashboard/
 ├── LICENSE               # MIT
 ├── CLAUDE.md             # Canonical AI agent rules
 │
-├── tests/                # pytest suite (62 tests, synthetic data)
+├── scripts/
+│   └── refresh_demo.py   # Regenerates + stamps docs/index.html
+├── tests/                # pytest suite (synthetic data)
 ├── data/                 # Input CSV files (gitignored)
 ├── output/               # Generated reports and charts (gitignored)
 ├── logs/                 # data_quality.log (gitignored)

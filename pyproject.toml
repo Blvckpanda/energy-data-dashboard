@@ -16,3 +16,5 @@ select = ["E", "F", "W", "I"]
 [tool.ruff.lint.per-file-ignores]
 # matplotlib requires .use("Agg") before pyplot import (headless backend)
 "visualise.py" = ["E402"]
+# scripts/refresh_demo.py imports config after the sys.path bootstrap
+"scripts/refresh_demo.py" = ["E402"]
