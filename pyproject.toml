@@ -16,5 +16,7 @@ select = ["E", "F", "W", "I"]
 [tool.ruff.lint.per-file-ignores]
 # matplotlib requires .use("Agg") before pyplot import (headless backend)
 "visualise.py" = ["E402"]
-# scripts/refresh_demo.py imports config after the sys.path bootstrap
+# scripts/refresh_demo.py and scripts/crosscheck_power_curve.py import
+# pipeline modules after a sys.path bootstrap
 "scripts/refresh_demo.py" = ["E402"]
+"scripts/crosscheck_power_curve.py" = ["E402"]
