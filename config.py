@@ -162,8 +162,8 @@ SCHEMA_REGISTRY = {
         "interval_minutes":     10,
         "power_curve_bin_width":   0.5,   # IEC 61400-12-1: 0.5 m/s bins
         "power_curve_min_samples": 3,     # 3 × 10-min rows ≈ 30 min of data
-        "methodology_note":     "The measured power curve follows the "
-                                "IEC 61400-12-1 binned methodology: operational "
+        "methodology_note":     "The measured power curve uses IEC "
+                                "61400-12-1-style 0.5 m/s binning: operational "
                                 "readings are grouped into 0.5 m/s wind-speed "
                                 "bins, and the bin means form the measured "
                                 "curve.",
@@ -258,4 +258,4 @@ ANOMALY_ROLLING_DROP_PCT = 0.20  # rolling mean drop % to flag
 # Shared name for the Excel sheet and HTML section presenting the
 # measured power curve (schemas whose registry entry sets
 # power_curve_bin_width)
-POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1)"
+POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1 style)"

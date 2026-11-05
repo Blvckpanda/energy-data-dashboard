@@ -207,7 +207,7 @@ def _reference_series(
             lambda interval: interval.left + (interval.right - interval.left) / 2
         )
         return x, power_curve["mean_primary"], (
-            "Measured Power Curve (IEC 61400-12-1 bins)"
+            "Measured Power Curve (IEC 61400-12-1-style bins)"
         )
     if cfg["scatter_reference"] == "column":
         return (
