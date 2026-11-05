@@ -25,7 +25,12 @@ time-series and distribution
 visualisations, flags anomalous readings using statistical and
 rolling-window methods, and maintains an append-only audit log keyed
 by run ID across every execution — directly mirroring data workflows
-used in real energy operations. Built as a self-directed portfolio
+used in real energy operations. The measured power curve is
+cross-checked against an independent IEC-style binned implementation
+(vendored OpenOA IEC algorithm plus a pandas reference): 0.000% mean
+absolute difference over all 43 operational bins (0 to 25 m/s,
+at least 6 samples each); see `context/power-curve-crosscheck.md`.
+Built as a self-directed portfolio
 project to demonstrate practical ETL, data cleaning, analysis, and
 reporting skills using industry-standard Python tooling.
 
