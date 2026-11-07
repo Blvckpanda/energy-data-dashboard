@@ -148,8 +148,10 @@ def _render_quality_note(run_ids: list[str] | None) -> str:
         for (issue, action), count in sorted(counts.items())
     )
     return (
+        '<div class="table-wrap">'
         "<table><thead><tr><th>Cleaning Check</th>"
         f"<th>Rows Affected</th></tr></thead><tbody>{rows_html}</tbody></table>"
+        "</div>"
     )
 
 
@@ -329,8 +331,10 @@ def _render_power_curve_table(power_curve_df: pd.DataFrame, cfg: dict) -> str:
     section = config.POWER_CURVE_SHEET_NAME
     return (
         f'<h2 id="power-curve">{section}</h2>'
+        '<div class="table-wrap">'
         f"<table><thead><tr>{header_cells}</tr></thead>"
         f"<tbody>{rows_html}</tbody></table>"
+        "</div>"
     )
 
 
@@ -396,7 +400,7 @@ def _build_html(
   .hero-meta {{ margin: 0; color: #BFD9E2; font-size: 0.9em;
               text-transform: uppercase; letter-spacing: 0.08em; }}
   nav.section-nav {{ position: sticky; top: 0; z-index: 10; display: flex;
-                   gap: 22px; overflow-x: auto;
+                   flex-wrap: wrap; gap: 10px 22px;
                    background: rgba(255, 255, 255, 0.95);
                    border: 1px solid var(--line); border-radius: 12px;
                    padding: 12px 18px; margin-bottom: 8px; }}
@@ -419,7 +423,9 @@ def _build_html(
               letter-spacing: -0.01em; }}
   h2 {{ color: var(--deep); margin-top: 40px; }}
   h3 {{ color: var(--deep); }}
-  table {{ border-collapse: collapse; width: 100%; margin: 20px 0;
+  .table-wrap {{ overflow-x: auto; margin: 20px 0;
+                border-radius: 10px; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 0;
           background: var(--card); border-radius: 10px; }}
   th, td {{ border: 1px solid var(--line); padding: 9px 12px;
           text-align: left; }}
