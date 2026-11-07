@@ -11,7 +11,7 @@
 | HTML export  | base64 (stdlib)      | Self-contained single-file report generation   |
 | CLI          | argparse (stdlib)    | Argument parsing — no extra dependency         |
 | Linting      | ruff (E/F/W/I)       | CI lint gate, same command runs locally        |
-| Testing      | pytest               | 62-test suite, fully synthetic data            |
+| Testing      | pytest               | 93-test suite, fully synthetic data            |
 | Environment  | venv / Docker        | Dependency isolation and reproducibility       |
 
 ## System Boundaries
