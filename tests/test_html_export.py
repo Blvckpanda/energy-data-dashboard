@@ -31,7 +31,36 @@ def test_html_is_self_contained(built):
     assert html.count('src="data:image/png;base64,') == 4
     assert 'src="http' not in html
     assert 'src="/' not in html
-    assert "<h2>Data Quality</h2>" in html
+    assert '<h2 id="data-quality">Data Quality</h2>' in html
+
+
+def test_hero_nav_and_kpi_cards(built):
+    """Front-end: gradient hero, sticky pure-CSS nav, and one KPI card
+    per headline statistic (same shared builder as the Excel Summary)."""
+    import re
+
+    import narrative
+
+    clean_df, run_id, results, chart_paths, output_dir = built
+    path = html_export.export_html(
+        clean_df, results, chart_paths, "wind", output_dir, run_id,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    cfg = config.SCHEMA_REGISTRY["wind"]
+    assert '<header class="hero">' in html
+    assert f"<h1>{cfg['asset_label']} Operations Report</h1>" in html
+    assert '<nav class="section-nav">' in html
+    assert "position: sticky" in html
+    assert 'href="#charts"' in html
+    assert "page-break-inside: avoid" in html
+
+    expected = narrative.build_headline_stats(
+        results, clean_df, cfg, [run_id]
+    )
+    assert html.count('<div class="kpi">') == len(expected)
+    kpi_values = re.findall(r'<div class="kpi-value">([^<]+)</div>', html)
+    assert len(kpi_values) == len(expected)
 
 
 def test_quality_note_reflects_this_runs_cleaning(
@@ -74,7 +103,7 @@ def test_quality_note_accepts_list_of_run_ids(wind_df, wind_harness):
         [run_id, other_run_id],
     )
     html = path.read_text(encoding="utf-8")
-    assert "<h2>Data Quality</h2>" in html
+    assert '<h2 id="data-quality">Data Quality</h2>' in html
     # Both runs' cleaning actions are summarised (2 runs × 20 rows each)
     assert "20 rows dropped" in html or "2 rows dropped" not in html
 
@@ -92,11 +121,15 @@ def test_html_stats_match_excel_stats(built):
     )
     html = path.read_text(encoding="utf-8")
 
-    # Scope to the Headline Statistics table: later sections (the
-    # power-curve table, when present) also contain <td> cells
-    stats_section = html.split("<h2>Headline Statistics</h2>", 1)[1]
-    stats_section = stats_section.split("<h2>", 1)[0]
-    html_labels = set(re.findall(r"<tr><td>([^<]+)</td><td>", stats_section))
+    # Scope to the Headline Statistics KPI band: later sections (the
+    # power-curve table, when present) also contain cell markup
+    stats_section = html.split(
+        '<h2 id="headline-statistics">Headline Statistics</h2>', 1
+    )[1]
+    stats_section = stats_section.split("<h2", 1)[0]
+    html_labels = set(
+        re.findall(r'<div class="kpi-label">([^<]+)</div>', stats_section)
+    )
     expected_labels = {
         label for label, _ in narrative.build_headline_stats(
             results, clean_df, config.SCHEMA_REGISTRY["wind"], [run_id]
@@ -142,7 +175,10 @@ def test_html_contains_power_curve_section(built):
     html = path.read_text(encoding="utf-8")
 
     cfg = config.SCHEMA_REGISTRY["wind"]
-    assert f"<h2>{config.POWER_CURVE_SHEET_NAME}</h2>" in html
+    assert (
+        f'<h2 id="power-curve">{config.POWER_CURVE_SHEET_NAME}</h2>'
+        in html
+    )
     assert narrative.power_curve_bin_header(cfg) in html
     assert "Data Sufficient" in html
     assert "<td>Yes</td>" in html or "<td>No</td>" in html
@@ -158,4 +194,5 @@ def test_html_no_power_curve_section_for_solar(solar_df, wind_harness):
     )
     html = path.read_text(encoding="utf-8")
     assert config.POWER_CURVE_SHEET_NAME not in html
-    assert "<h2>Data Quality</h2>" in html
+    assert 'href="#power-curve"' not in html
+    assert '<h2 id="data-quality">Data Quality</h2>' in html

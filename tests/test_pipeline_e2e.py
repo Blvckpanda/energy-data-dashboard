@@ -63,7 +63,7 @@ def test_run_single_html_report_is_self_contained(wind_df, tmp_path, monkeypatch
     assert len(reports) == 1
     html = reports[0].read_text(encoding="utf-8")
     assert 'src="data:image/png;base64,' in html
-    assert "<h2>Data Quality</h2>" in html
+    assert '<h2 id="data-quality">Data Quality</h2>' in html
 
 
 # ── Batch mode (Unit 7 done-when checklist) ──────────────────────────

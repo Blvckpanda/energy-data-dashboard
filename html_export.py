@@ -56,12 +56,13 @@ def export_html(
     """
     cfg = config.SCHEMA_REGISTRY[schema]
     narrative_text = narrative.build_narrative(results, clean_df, schema)
-    stats_html = _render_stats_table(results, clean_df, cfg, run_ids)
+    stats_html = _render_stats_cards(results, clean_df, cfg, run_ids)
     anomaly_html = _render_anomaly_summary(results)
     quality_html = _render_quality_note(run_ids)
+    has_power_curve = "power_curve" in results
     power_curve_html = (
         _render_power_curve_table(results["power_curve"], cfg)
-        if "power_curve" in results else ""
+        if has_power_curve else ""
     )
     images_b64 = [_encode_image(p) for p in chart_paths]
 
@@ -73,8 +74,9 @@ def export_html(
     ]
 
     html = _build_html(
-        narrative_text, stats_html, anomaly_html, quality_html,
-        power_curve_html, images_b64, chart_titles, schema,
+        _render_hero(cfg), _render_nav(has_power_curve), narrative_text,
+        stats_html, anomaly_html, quality_html, power_curve_html,
+        images_b64, chart_titles, schema,
     )
 
     base_filename = f"report_{date.today().isoformat()}.html"
@@ -171,16 +173,16 @@ def _encode_image(path: Path) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def _render_stats_table(
+def _render_stats_cards(
     results: dict,
     clean_df: pd.DataFrame,
     cfg: dict,
     run_ids: list[str] | None,
 ) -> str:
     """
-    Build an HTML table of headline statistics.
+    Build the headline statistics as a responsive KPI card band.
 
-    Rows come from the shared builder in narrative.py — identical
+    Cards come from the shared builder in narrative.py — identical
     row set and order as the Excel Summary sheet; only the value
     formatting differs (percent-suffixed ratio, thousands-comma
     counts).
@@ -190,10 +192,10 @@ def _render_stats_table(
         clean_df (pd.DataFrame): the clean DataFrame for this run
         cfg (dict): schema config from SCHEMA_REGISTRY
         run_ids (list[str] | None): normalised run IDs; more than
-            one adds the Source Files Processed row
+            one adds the Source Files Processed card
 
     Returns:
-        str: HTML <tr> rows for the statistics table body
+        str: HTML <div class="kpi-band"> block of cards
     """
     ratio_rows = {
         label: value
@@ -210,10 +212,62 @@ def _render_stats_table(
             return f"{value:,}"
         return f"{value:g}"
 
-    return "".join(
-        f"<tr><td>{label}</td><td>{_fmt(label, value)}</td></tr>"
+    cards = "".join(
+        f'<div class="kpi"><div class="kpi-label">{label}</div>'
+        f'<div class="kpi-value">{_fmt(label, value)}</div></div>'
         for label, value in ratio_rows.items()
     )
+    return f'<div class="kpi-band">{cards}</div>'
+
+
+def _render_hero(cfg: dict) -> str:
+    """
+    Build the hero header: gradient title band with a SCADA meta line.
+
+    Parameters:
+        cfg (dict): schema config from SCHEMA_REGISTRY, supplying the
+            asset label and the analysis interval
+
+    Returns:
+        str: hero <header> block
+    """
+    return (
+        "<header class=\"hero\">"
+        f"<h1>{cfg['asset_label']} Operations Report</h1>"
+        "<p class=\"hero-meta\">"
+        f"Generated {date.today().isoformat()} "
+        f"&middot; {cfg['interval_minutes']}-minute SCADA interval"
+        "</p>"
+        "</header>"
+    )
+
+
+def _render_nav(has_power_curve: bool) -> str:
+    """
+    Build the sticky section navigation.
+
+    Pure anchor links: no JavaScript keeps the report self-contained
+    and safe to open offline. The power-curve link only appears when
+    the run's schema provides that analysis.
+
+    Parameters:
+        has_power_curve (bool): whether the power-curve section exists
+
+    Returns:
+        str: sticky <nav> block
+    """
+    links = [
+        ("Headline Statistics", "headline-statistics"),
+        ("Anomaly Summary", "anomaly-summary"),
+        ("Data Quality", "data-quality"),
+        ("Charts", "charts"),
+    ]
+    if has_power_curve:
+        links.insert(3, ("Power Curve", "power-curve"))
+    items = "".join(
+        f'<a href="#{slug}">{label}</a>' for label, slug in links
+    )
+    return f'<nav class="section-nav">{items}</nav>'
 
 
 def _render_anomaly_summary(results: dict) -> str:
@@ -274,15 +328,17 @@ def _render_power_curve_table(power_curve_df: pd.DataFrame, cfg: dict) -> str:
     )
     section = config.POWER_CURVE_SHEET_NAME
     return (
-        f"<h2>{section}</h2>"
+        f'<h2 id="power-curve">{section}</h2>'
         f"<table><thead><tr>{header_cells}</tr></thead>"
         f"<tbody>{rows_html}</tbody></table>"
     )
 
 
 def _build_html(
+    hero_html: str,
+    nav_html: str,
     narrative_text: str,
-    stats_rows_html: str,
+    stats_cards_html: str,
     anomaly_html: str,
     quality_html: str,
     power_curve_html: str,
@@ -294,8 +350,10 @@ def _build_html(
     Assemble the full HTML document as a single string.
 
     Parameters:
+        hero_html (str): gradient hero header block
+        nav_html (str): sticky section navigation block
         narrative_text (str): narrative paragraph
-        stats_rows_html (str): <tr> rows for the stats table
+        stats_cards_html (str): KPI card band from _render_stats_cards
         anomaly_html (str): anomaly summary HTML block
         quality_html (str): data quality note HTML block
         power_curve_html (str): measured power curve section, or ""
@@ -318,39 +376,89 @@ def _build_html(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{schema_label} Operations Report</title>
 <style>
-  body {{ font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto;
-         padding: 0 20px; color: #2D3142; background: #FFFFFF; }}
-  h1 {{ color: #1B3A5C; border-bottom: 3px solid #2A7F8F; padding-bottom: 10px; }}
-  h2 {{ color: #2A7F8F; margin-top: 40px; }}
-  h3 {{ color: #1B3A5C; }}
-  p.narrative {{ font-size: 1.05em; line-height: 1.6; background: #E8EEF2;
-                padding: 20px; border-radius: 6px; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
-  th, td {{ border: 1px solid #C8D6DE; padding: 8px 12px; text-align: left; }}
-  th {{ background: #1B3A5C; color: white; }}
-  .chart {{ margin: 30px 0; }}
-  .chart img {{ max-width: 100%; border: 1px solid #C8D6DE; border-radius: 4px; }}
-  footer {{ margin-top: 50px; font-size: 0.85em; color: #5B8FA8; text-align: center; }}
+  :root {{ --bg: #F4F7FA; --card: #FFFFFF; --ink: #17233B;
+          --muted: #5B6B85; --navy: #14263F; --deep: #1B3A5C;
+          --teal: #2A7F8F; --line: #E3EAF2; }}
+  * {{ box-sizing: border-box; }}
+  body {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto,
+         Arial, sans-serif; max-width: 960px; margin: 40px auto;
+         padding: 0 20px; color: var(--ink);
+         background: var(--bg); line-height: 1.55; }}
+  header.hero {{ background: linear-gradient(135deg, var(--navy) 0%,
+                var(--deep) 55%, var(--teal) 100%); color: #FFFFFF;
+                border-radius: 14px; padding: 34px 36px;
+                margin-bottom: 24px; }}
+  header.hero h1 {{ color: #FFFFFF; border: none; padding: 0; margin: 0 0 8px;
+                   font-size: 1.9em; letter-spacing: -0.01em; }}
+  .hero-meta {{ margin: 0; color: #BFD9E2; font-size: 0.9em;
+              text-transform: uppercase; letter-spacing: 0.08em; }}
+  nav.section-nav {{ position: sticky; top: 0; z-index: 10; display: flex;
+                   gap: 22px; overflow-x: auto;
+                   background: rgba(255, 255, 255, 0.95);
+                   border: 1px solid var(--line); border-radius: 12px;
+                   padding: 12px 18px; margin-bottom: 8px; }}
+  nav.section-nav a {{ color: var(--muted); text-decoration: none;
+                     font-weight: 600; font-size: 0.92em;
+                     white-space: nowrap; }}
+  nav.section-nav a:hover {{ color: var(--teal); }}
+  p.narrative {{ font-size: 1.05em; line-height: 1.65;
+                background: var(--card); padding: 20px 22px;
+                border-radius: 12px; border: 1px solid var(--line); }}
+  .kpi-band {{ display: grid; gap: 14px;
+             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+             margin: 18px 0; }}
+  .kpi {{ background: var(--card); border: 1px solid var(--line);
+        border-radius: 12px; padding: 14px 16px; }}
+  .kpi-label {{ font-size: 0.76em; font-weight: 700;
+              text-transform: uppercase; letter-spacing: 0.07em;
+              color: var(--muted); margin-bottom: 6px; }}
+  .kpi-value {{ font-size: 1.4em; font-weight: 700;
+              letter-spacing: -0.01em; }}
+  h2 {{ color: var(--deep); margin-top: 40px; }}
+  h3 {{ color: var(--deep); }}
+  table {{ border-collapse: collapse; width: 100%; margin: 20px 0;
+          background: var(--card); border-radius: 10px; }}
+  th, td {{ border: 1px solid var(--line); padding: 9px 12px;
+          text-align: left; }}
+  th {{ background: var(--deep); color: white; }}
+  tr:nth-child(even) td {{ background: #FAFCFE; }}
+  .chart {{ margin: 30px 0; background: var(--card);
+          border: 1px solid var(--line); border-radius: 12px;
+          padding: 16px; }}
+  .chart img {{ max-width: 100%; border-radius: 8px; display: block; }}
+  footer {{ margin-top: 50px; font-size: 0.85em; color: var(--muted);
+          text-align: center; }}
+  @media print {{
+    nav.section-nav {{ display: none; }}
+    body {{ background: #FFFFFF; margin: 0; }}
+    .chart, .kpi {{ page-break-inside: avoid; }}
+  }}
+  @media (max-width: 640px) {{
+    header.hero {{ padding: 24px; }}
+    header.hero h1 {{ font-size: 1.4em; }}
+  }}
 </style>
 </head>
 <body>
-  <h1>{schema_label} Operations Report</h1>
-  <p class="narrative">{narrative_text}</p>
+  {hero_html}
+  {nav_html}
+  <p id="summary" class="narrative">{narrative_text}</p>
 
-  <h2>Headline Statistics</h2>
-  <table><tbody>{stats_rows_html}</tbody></table>
+  <h2 id="headline-statistics">Headline Statistics</h2>
+  {stats_cards_html}
 
-  <h2>Anomaly Summary</h2>
+  <h2 id="anomaly-summary">Anomaly Summary</h2>
   {anomaly_html}
 
-  <h2>Data Quality</h2>
+  <h2 id="data-quality">Data Quality</h2>
   {quality_html}
 
   {power_curve_html}
 
-  <h2>Charts</h2>
+  <h2 id="charts">Charts</h2>
   {charts_html}
 
   <footer>Generated by Energy Operations Data Dashboard</footer>
