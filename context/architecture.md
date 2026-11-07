@@ -11,7 +11,7 @@
 | HTML export  | base64 (stdlib)      | Self-contained single-file report generation   |
 | CLI          | argparse (stdlib)    | Argument parsing — no extra dependency         |
 | Linting      | ruff (E/F/W/I)       | CI lint gate, same command runs locally        |
-| Testing      | pytest               | 93-test suite, fully synthetic data            |
+| Testing      | pytest               | 111-test suite, fully synthetic data           |
 | Environment  | venv / Docker        | Dependency isolation and reproducibility       |
 
 ## System Boundaries
@@ -24,7 +24,12 @@
 
 - `ingest.py` — Owns CSV loading and schema validation. Checks for
   all required SCADA columns of the active registry schema before
-  returning a raw DataFrame. Does not clean or transform data.
+  returning a raw DataFrame. For `solar_weather` it also parses both
+  files' timestamps strictly, rejects plants that appear in only one
+  file, and joins plant weather onto each inverter row by
+  `(PLANT_ID, DATE_TIME)`. Malformed input raises a plain-English
+  error; partial weather coverage is reported and excluded, never
+  filled.
 
 - `clean.py` — Owns deduplication, type coercion, null handling, and
   date parsing, all driven by registry keys. Returns a clean
@@ -37,6 +42,9 @@
   mean, daily total, daily mean). Returns a named dict of result
   DataFrames. Distribution analysis dispatches on the registry's
   distribution spec (`bins` / `group_mean`), never the schema name.
+  Schemas with `plant_col` also get a plant-interval summary. A
+  capacity-normalized ratio is produced only when the registry holds
+  a positive `nameplate_kw`; absent that value, no such result exists.
   Does not touch files or produce output.
 
 - `detect.py` — Owns anomaly detection: static threshold and rolling
@@ -48,8 +56,10 @@
   charts directory is the caller's `charts_dir` parameter (default
   `config.CHARTS_DIR`). Returns saved image file paths.
 
-- `export.py` — Owns Excel workbook assembly (seven sheets). Sheet
-  headers come from registry display names. Accepts `run_ids: list`.
+- `export.py` — Owns Excel workbook assembly (seven base sheets, plus
+  a Plant Summary sheet for `solar_weather` and the power-curve sheet
+  where enabled). Sheet headers come from registry display names or
+  the shared builders in `narrative.py`. Accepts `run_ids: list`.
 
 - `html_export.py` — Owns self-contained HTML report generation
   (base64-embedded charts, data-quality note). Accepts
@@ -65,7 +75,9 @@
   numeric thresholds, log field names, and every per-schema key
   (columns, labels, display names, interval, scatter reference,
   distribution spec). Contains no logic. Imported by all other
-  modules. Adding a schema touches only this file.
+  modules. A single-file schema touches only this file; the two-file
+  `solar_weather` contract is also registry-driven, with one CLI flag
+  (`--weather-file`) shared by any future two-file schema.
 
 - `data/` — Input CSV files only. Treated as immutable. No script
   ever writes to this directory.
@@ -134,6 +146,17 @@ Datetime `%d-%m-%Y %H:%M`, 15-minute intervals, `DATE_TIME` and
 `AC_POWER / DC_POWER`; the scatter reference is the ideal 1:1 line
 (`identity`); distribution groups mean AC power per inverter
 (`SOURCE_KEY`).
+
+### Solar weather (`solar_weather`)
+
+The generation file uses the solar columns above. The weather file is
+plant-level: `DATE_TIME`, `PLANT_ID`, `SOURCE_KEY` (sensor), and the
+three weather measures. The join is on `(PLANT_ID, DATE_TIME)` only,
+never `SOURCE_KEY`. Generation is summed per plant interval, weather
+is averaged, and inverter counts expose under-populated intervals.
+`IRRADIATION` below 50 W/m² (named `IRRADIANCE_MIN_FOR_RATIO`) is
+excluded from the metric. `nameplate_kw` is `None`, so the report
+reports Irradiance-Normalized Output and makes no IEC 61724 claim.
 
 ### Hydro (`COL_HYDRO_*` constants)
 

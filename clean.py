@@ -220,6 +220,8 @@ def _parse_datetime(
     Parse the datetime column to datetime64 dtype.
 
     Strategy:
+      0. If already datetime64 (the solar_weather merge parses both
+         files strictly before cleaning), keep it and log zero changes
       1. Primary: pd.to_datetime(format=config.DATE_FORMAT)
       2. Fallback: pd.to_datetime(format='mixed')
          — prints a [WARN] terminal message if used
@@ -240,6 +242,19 @@ def _parse_datetime(
     datetime_col = cfg["datetime_col"]
     date_format = cfg["date_format"]
     inferred = False
+
+    if pd.api.types.is_datetime64_any_dtype(df[datetime_col]):
+        _append_log([
+            {
+                config.LOG_FIELD_RUN_ID:       run_id,
+                config.LOG_FIELD_TIMESTAMP:    run_timestamp,
+                config.LOG_FIELD_COLUMN:       datetime_col,
+                config.LOG_FIELD_ISSUE_TYPE:   "type_coercion",
+                config.LOG_FIELD_ROW_COUNT:    0,
+                config.LOG_FIELD_ACTION_TAKEN: "coerced",
+            }
+        ])
+        return df
 
     try:
         df[datetime_col] = pd.to_datetime(

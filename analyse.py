@@ -49,6 +49,12 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
             'power_curve'  — measured power curve on IEC 61400-12-1-
                              style bins (only when the schema's
                              registry entry sets power_curve_bin_width)
+            'plant_summary' — plant-interval aggregation with summed
+                             power, mean irradiance and inverter count
+                             (only when the registry sets plant_col)
+            'performance_ratio' — capacity-normalized ratio (only when
+                             the registry sets a documented
+                             nameplate_kw; otherwise absent)
 
     Assumptions:
         - datetime column is dtype datetime64 (required for resampling)
@@ -68,6 +74,16 @@ def analyse(df: pd.DataFrame, schema: str) -> dict[str, pd.DataFrame]:
     # declaring a bin width — no schema-name branch here.
     if "power_curve_bin_width" in cfg:
         results["power_curve"] = _compute_power_curve(df, cfg)
+    # Plant-level aggregation is opt-in for multi-asset schemas. The
+    # capacity-normalized ratio is computed only when a documented
+    # nameplate is present; otherwise no standard-based claim exists.
+    if "plant_col" in cfg:
+        results["plant_summary"] = _compute_plant_summary(df, cfg)
+        performance_ratio = _compute_performance_ratio(
+            results["plant_summary"], cfg
+        )
+        if performance_ratio is not None:
+            results["performance_ratio"] = performance_ratio
     return results
 
 
@@ -94,11 +110,14 @@ def efficiency_columns(cfg: dict) -> list[str]:
     columns, and export._efficiency_headers derives the Efficiency
     Analysis sheet's header row from the same list — so the sheet can
     never drift out of step with the analysis. The registry key order
-    is the contract: datetime, primary output, secondary metric,
-    reference, then the ratio itself.
+    is the contract: datetime, optional plant and asset identifiers,
+    primary output, secondary metric, reference, then the ratio.
 
-    Deduplication preserves order (handles solar, where secondary_col
-    == reference_col: five selections collapse to four columns).
+    Identifiers are included only for schemas that declare plant_col
+    and asset_id_col (solar_weather), so its per-inverter metrics stay
+    attributable. Deduplication preserves order (handles solar, where
+    secondary_col == reference_col: five selections collapse to four
+    columns).
 
     Parameters:
         cfg (dict): schema config from config.SCHEMA_REGISTRY
@@ -106,9 +125,13 @@ def efficiency_columns(cfg: dict) -> list[str]:
     Returns:
         list[str]: unique column names in report order
     """
-    select_cols = [
-        cfg["datetime_col"], cfg["primary_power_col"],
-        cfg["secondary_col"], cfg["reference_col"], cfg["ratio_name"],
+    select_cols = [cfg["datetime_col"]]
+    for optional_col in ("plant_col", "asset_id_col"):
+        if optional_col in cfg:
+            select_cols.append(cfg[optional_col])
+    select_cols += [
+        cfg["primary_power_col"], cfg["secondary_col"],
+        cfg["reference_col"], cfg["ratio_name"],
     ]
     seen: set[str] = set()
     unique_cols: list[str] = []
@@ -229,6 +252,122 @@ def _compute_power_curve(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
         f"({min_samples}+ samples)"
     )
     return curve
+
+
+def _compute_plant_summary(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """
+    Aggregate inverter rows to one row per plant interval.
+
+    Power columns are summed across inverters, irradiance is averaged
+    across sensor rows (analyse receives one already), and the number
+    of reporting inverters is counted so under-populated intervals are
+    visible. The normalized output is computed from summed plant power
+    over mean plant irradiance, not as an average of per-inverter
+    ratios, so a plant with more inverters cannot be down-weighted.
+
+    Parameters:
+        df (pd.DataFrame): clean, joined DataFrame
+        cfg (dict): schema config; needs plant_col, asset_id_col,
+                    primary_power_col, secondary_col, reference_col
+
+    Returns:
+        pd.DataFrame: plant, timestamp, summed power columns, mean
+                      reference, inverter_count, and the ratio column
+                      (NaN where the threshold excludes the interval)
+    """
+    plant_col = cfg["plant_col"]
+    datetime_col = cfg["datetime_col"]
+    primary = cfg["primary_power_col"]
+    secondary = cfg["secondary_col"]
+    reference = cfg["reference_col"]
+    asset_id = cfg["asset_id_col"]
+
+    plant = df.groupby([plant_col, datetime_col], as_index=False).agg({
+        primary: "sum",
+        secondary: "sum",
+        reference: "mean",
+        asset_id: "nunique",
+    })
+    plant = plant.rename(columns={asset_id: "inverter_count"})
+
+    usable = (
+        (plant[reference] > cfg["min_reference"]) &
+        (plant[primary] > cfg["min_primary"])
+    )
+    plant[cfg["ratio_name"]] = (
+        plant[primary] / plant[reference]
+    ).where(usable)
+
+    modal_inverters = (
+        int(plant["inverter_count"].mode().iloc[0]) if len(plant) else 0
+    )
+    below_modal = int((plant["inverter_count"] < modal_inverters).sum())
+    print(
+        f"[ANALYSE] Plant summary: {len(plant):,} plant intervals across "
+        f"{plant[plant_col].nunique():,} plant(s); {below_modal:,} with "
+        f"fewer than the modal {modal_inverters} inverters"
+    )
+    print(
+        f"[ANALYSE] {int((~usable).sum()):,} plant intervals excluded "
+        f"from {cfg['ratio_name']} (irradiance threshold or "
+        "non-positive output)"
+    )
+
+    return plant.sort_values([plant_col, datetime_col]).reset_index(drop=True)
+
+
+def _compute_performance_ratio(
+    plant_summary: pd.DataFrame, cfg: dict
+) -> pd.DataFrame | None:
+    """
+    Compute the capacity-normalized performance ratio when a nameplate
+    is documented.
+
+    The result is deliberately gated: without a positive nameplate_kw
+    in the registry this returns None and the analysis produces no
+    capacity-normalized metric. The formula is AC power divided by
+    (nameplate x irradiance / 1000), matching the plant interval
+    definition. It is not reported for solar_weather today because the
+    source dataset documents no nameplate capacity.
+
+    Parameters:
+        plant_summary (pd.DataFrame): result of _compute_plant_summary
+        cfg (dict): schema config; nameplate_kw may be None
+
+    Returns:
+        pd.DataFrame | None: plant, timestamp, nameplate_kw and
+            performance_ratio, or None when no documented nameplate
+            is configured
+    """
+    nameplate = cfg.get("nameplate_kw")
+    if (
+        isinstance(nameplate, bool) or
+        not isinstance(nameplate, (int, float)) or
+        nameplate <= 0
+    ):
+        return None
+
+    plant_col = cfg["plant_col"]
+    datetime_col = cfg["datetime_col"]
+    primary = cfg["primary_power_col"]
+    reference = cfg["reference_col"]
+
+    usable = (
+        (plant_summary[reference] > cfg["min_reference"]) &
+        (plant_summary[primary] > cfg["min_primary"])
+    )
+    result = plant_summary[[plant_col, datetime_col]].copy()
+    result["nameplate_kw"] = float(nameplate)
+    result["performance_ratio"] = (
+        plant_summary[primary] /
+        (float(nameplate) * plant_summary[reference] / 1000.0)
+    ).where(usable)
+
+    print(
+        f"[ANALYSE] Performance ratio enabled with documented nameplate "
+        f"{float(nameplate):,.1f} kW"
+    )
+    return result
 
 
 def _compute_monthly(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:

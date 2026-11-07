@@ -13,8 +13,9 @@ IEC 61400-12-1-style 0.5 m/s binned power curve, all charts embedded),
 served via GitHub Pages.
 
 A registry-driven, multi-schema Python pipeline that ingests operational SCADA data
-from CSV files — Wind Turbine, Solar Power Generation, or Hydro
-Turbine — cleans and validates it, runs structured analysis including
+from CSV files — Wind Turbine, Solar Power Generation (with its plant
+weather sensors), or Hydro Turbine — cleans and validates it, runs
+structured analysis including
 anomaly detection, and exports a multi-sheet Excel report and a
 self-contained shareable HTML report, both with embedded charts and
 plain-English summaries. The pipeline computes efficiency against
@@ -139,6 +140,32 @@ Dataset: [Wind Turbine SCADA Dataset](https://www.kaggle.com/datasets/berkerisen
 
 Dataset: [Solar Power Generation Data](https://www.kaggle.com/datasets/anikannal/solar-power-generation-data)
 
+**Solar plant weather schema (`--schema solar_weather`):**
+
+Uses the dataset's generation file plus the matching plant-level
+weather sensor file:
+
+| Weather column | Type |
+| -------------- | ---- |
+| `DATE_TIME` | datetime |
+| `PLANT_ID` | string |
+| `SOURCE_KEY` | string (sensor ID) |
+| `IRRADIATION` | float (W/m²) |
+| `AMBIENT_TEMPERATURE` | float (°C) |
+| `MODULE_TEMPERATURE` | float (°C) |
+
+The two files are joined on `(PLANT_ID, DATE_TIME)` only. Generation
+`SOURCE_KEY` values are inverter IDs and weather `SOURCE_KEY` values
+are sensor IDs, so joining on `SOURCE_KEY` would match nothing.
+Generation is aggregated to plant intervals for the headline metric,
+while the Clean Data and Efficiency sheets keep per-inverter rows.
+
+The dataset documents no nameplate capacity, so the report labels its
+metric **Irradiance-Normalized Output (kW per W/m²)** and makes no
+IEC 61724 performance-ratio claim. Setting a documented
+`nameplate_kw` in the schema registry enables the gated
+capacity-normalized calculation.
+
 **Hydro Turbine schema (`--schema hydro`):**
 
 | Column | Type |
@@ -200,6 +227,15 @@ python main.py --file data/solar.csv --schema solar
 python main.py --file data/hydro.csv --schema hydro
 ```
 
+**Solar plant weather schema (two files):**
+
+```bash
+python main.py \
+  --file data/Plant_1_Generation_Data.csv \
+  --weather-file data/Plant_1_Weather_Sensor_Data.csv \
+  --schema solar_weather
+```
+
 **Batch mode — process all CSVs in a folder:**
 
 ```bash
@@ -255,6 +291,7 @@ sheets (eight for schemas that enable the measured power curve):
 | Clean Data | Full cleaned dataset, plain-English headers |
 | Trend Analysis | Monthly mean, daily total, and daily mean power |
 | Efficiency Analysis | Per-row efficiency/conversion ratios |
+| Plant Summary | Per-plant interval sums, mean irradiance, inverter count and normalized output (solar_weather only) |
 | Power Curve (IEC 61400-12-1 style) | Measured binned power curve (wind schema) |
 | Charts | All four embedded chart images |
 | Anomaly Report | Flagged anomalous readings with detection method |

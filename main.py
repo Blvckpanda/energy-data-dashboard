@@ -12,8 +12,9 @@ a list once in _run_pipeline — the pipeline boundary — so exporters
 always receive lists.
 
 Fully registry-driven: the --schema choices, and every downstream
-schema behaviour, come from config.SCHEMA_REGISTRY — adding a schema
-requires only a registry entry, no changes to this module.
+schema behaviour, come from config.SCHEMA_REGISTRY. The solar_weather
+schema is the one two-file input: --weather-file supplies its
+plant-level sensor CSV and is rejected for every single-file schema.
 """
 import argparse
 import sys
@@ -87,6 +88,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             schema (str):         a schema name from
                                   config.SCHEMA_REGISTRY
             format (str):         "excel", "html", or "both"
+            weather_file (Path | None): plant-level weather sensor CSV,
+                                  required only for solar_weather
     """
     parser = argparse.ArgumentParser(
         prog="main.py",
@@ -124,6 +127,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "default: wind).",
     )
     parser.add_argument(
+        "--weather-file",
+        type=Path,
+        metavar="WEATHER",
+        help="Path to the plant-level weather sensor CSV. Required for "
+             "--schema solar_weather; not valid for any other schema.",
+    )
+    parser.add_argument(
         "--format",
         choices=["excel", "html", "both"],
         default="excel",
@@ -132,7 +142,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None:
+def run_single(
+    file_path: Path,
+    output_dir: Path,
+    schema: str,
+    fmt: str,
+    weather_file: Path | None = None,
+) -> None:
     """
     Run the full pipeline on a single CSV file.
 
@@ -141,13 +157,20 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
     result. The report's quality-log entries are filtered to this
     run's run_id.
 
-    Stages: LOAD → CLEAN → ANALYSE → DETECT → VISUALISE → EXPORT
+    For solar_weather, --weather-file is required and the two files
+    are validated and joined before cleaning. For every other schema
+    a weather file is rejected rather than ignored.
+
+    Stages: LOAD → MERGE (solar_weather) → CLEAN → ANALYSE → DETECT
+    → VISUALISE → EXPORT
 
     Parameters:
         file_path (Path): path to the SCADA CSV file to process
         output_dir (Path): directory to write the report and charts to
         schema (str): a schema name from config.SCHEMA_REGISTRY
         fmt (str): report format — "excel", "html", or "both"
+        weather_file (Path | None): plant-level weather sensor CSV,
+            required only when the schema declares a weather contract
 
     Returns:
         None
@@ -157,10 +180,29 @@ def run_single(file_path: Path, output_dir: Path, schema: str, fmt: str) -> None
         - Writes .png files to output_dir/charts/
         - Writes one or more report files to output_dir
     """
+    cfg = config.SCHEMA_REGISTRY[schema]
+    needs_weather = "weather_required_columns" in cfg
+
+    if needs_weather and weather_file is None:
+        sys.exit(
+            f"Error: --schema {schema} requires --weather-file <path> "
+            "with the plant-level weather sensor CSV."
+        )
+    if weather_file is not None and not needs_weather:
+        sys.exit(
+            f"Error: --weather-file is only valid for schemas that "
+            f"accept a weather file; '{schema}' does not."
+        )
+
     try:
         raw_df = ingest.load_csv(file_path)
         ingest.validate_schema(raw_df, schema)
         _print_load_summary(raw_df)
+        if weather_file is not None:
+            weather_df = ingest.load_csv(weather_file)
+            ingest.validate_schema(weather_df, schema, role="weather")
+            _print_load_summary(weather_df)
+            raw_df = ingest.merge_solar_weather(raw_df, weather_df, schema)
     except SystemExit:
         raise
     except Exception as e:
@@ -210,6 +252,13 @@ def run_batch(folder_path: Path, output_dir: Path, schema: str, fmt: str) -> Non
         - Writes .png files to output_dir/charts/
         - Writes one or more consolidated report files to output_dir
     """
+    if "weather_required_columns" in config.SCHEMA_REGISTRY[schema]:
+        sys.exit(
+            f"Error: Batch mode is not supported for '{schema}'. "
+            "Run one generation file at a time with --file and "
+            "--weather-file."
+        )
+
     if not folder_path.exists():
         sys.exit(f"Error: Folder not found — {folder_path}")
 
@@ -385,8 +434,17 @@ def main() -> None:
     if not args.file and not args.folder:
         sys.exit("Error: You must provide either --file or --folder.")
 
+    if args.weather_file and args.folder:
+        sys.exit(
+            "Error: --weather-file is only valid with --file; batch "
+            "mode cannot pair one weather file with many generation files."
+        )
+
     if args.file:
-        run_single(args.file, args.output, args.schema, args.format)
+        run_single(
+            args.file, args.output, args.schema, args.format,
+            weather_file=args.weather_file,
+        )
     else:
         run_batch(args.folder, args.output, args.schema, args.format)
 

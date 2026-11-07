@@ -52,14 +52,23 @@ def build_headline_stats(
     primary = cfg["primary_power_col"]
     secondary = cfg["secondary_col"]
 
+    # Plant-level metrics (when the schema produces them) are the
+    # headline; the per-inverter table remains a separate report sheet.
+    ratio_df = results.get("plant_summary", efficiency_df)
+    ratio_values = ratio_df[cfg["ratio_name"]].dropna()
+    ratio_mean = float(ratio_values.mean()) if len(ratio_values) else float("nan")
+    if cfg.get("ratio_is_percent", True):
+        ratio_mean = round(ratio_mean * 100, 2)
+    else:
+        ratio_mean = round(ratio_mean, 3)
+
     rows: list[tuple[str, float | int]] = [
         (f"Mean {cfg['primary_label']}", round(stats.loc["mean", primary], 2)),
         (f"Max {cfg['primary_label']}", round(stats.loc["max", primary], 2)),
         (f"Std Dev {cfg['primary_label']}", round(stats.loc["std", primary], 2)),
         (f"Mean {cfg['secondary_label']}", round(stats.loc["mean", secondary], 2)),
         (f"Max {cfg['secondary_label']}", round(stats.loc["max", secondary], 2)),
-        (f"Mean {cfg['ratio_label']}",
-         round(efficiency_df[cfg["ratio_name"]].mean() * 100, 2)),
+        (f"Mean {cfg['ratio_label']}", ratio_mean),
         ("Total Rows Analysed", len(efficiency_df)),
         ("Rows Excluded from Analysis",
          len(clean_df) - len(efficiency_df)),
@@ -69,6 +78,34 @@ def build_headline_stats(
     if len(ids) > 1:
         rows.append(("Source Files Processed", len(ids)))
     return rows
+
+
+def plant_summary_headers(cfg: dict) -> dict:
+    """
+    Plain-English headers for the plant-interval summary.
+
+    Shared by the Excel sheet and the HTML table so the two report
+    formats cannot disagree on labels.
+
+    Parameters:
+        cfg (dict): schema config; must set plant_col and asset_id_col
+
+    Returns:
+        dict: mapping of plant_summary columns to display headers
+    """
+    return {
+        cfg["plant_col"]:           cfg["display_names"].get(
+            cfg["plant_col"], "Plant ID"
+        ),
+        cfg["datetime_col"]:        "Timestamp",
+        cfg["primary_power_col"]:   cfg["primary_label"],
+        cfg["secondary_col"]:       cfg["secondary_label"],
+        cfg["reference_col"]:       cfg["display_names"].get(
+            cfg["reference_col"], cfg["reference_col"]
+        ),
+        "inverter_count":          "Inverters Reporting",
+        cfg["ratio_name"]:          cfg["ratio_label"],
+    }
 
 
 def power_curve_bin_header(cfg: dict) -> str:
@@ -139,16 +176,46 @@ def build_narrative(results: dict, clean_df: pd.DataFrame, schema: str) -> str:
     efficiency_df = results["efficiency"]
     stats = results["stats"]
     mean_power = stats.loc["mean", cfg["primary_power_col"]]
-    mean_ratio = efficiency_df[cfg["ratio_name"]].mean() * 100
-    op_hours = _operational_hours(len(efficiency_df), cfg)
+    ratio_df = results.get("plant_summary", efficiency_df)
+    mean_ratio = ratio_df[cfg["ratio_name"]].mean()
+    op_rows = (
+        results["plant_summary"]
+        if cfg.get("hours_from_plant_intervals")
+        else efficiency_df
+    )
+    op_hours = _operational_hours(len(op_rows), cfg)
+
+    if pd.isna(mean_ratio):
+        ratio_sentence = (
+            f"No interval met the reference threshold, so "
+            f"{cfg['ratio_label']} is not reported."
+        )
+    elif cfg.get("ratio_is_percent", True):
+        ratio_sentence = (
+            f"Overall {cfg['ratio_label']} against the reference "
+            f"averaged {mean_ratio * 100:.1f}%."
+        )
+    else:
+        ratio_sentence = (
+            f"Overall {cfg['ratio_label']} averaged {mean_ratio:,.3f}."
+        )
+
+    scope = ""
+    if "plant_col" in cfg:
+        plant_count = clean_df[cfg["plant_col"]].nunique()
+        # SOURCE_KEY values can repeat across plants, so count the
+        # distinct (plant, inverter) pairs rather than the raw IDs.
+        inverter_count = len(
+            clean_df[[cfg["plant_col"], cfg["asset_id_col"]]].drop_duplicates()
+        )
+        scope = f" across {plant_count} plants and {inverter_count} inverters"
 
     opening = (
         f"This report analyses {op_hours:,} hours of operational "
-        f"{cfg['asset_label'].lower()} data. "
+        f"{cfg['asset_label'].lower()} data{scope}. "
         f"The system produced a mean {cfg['primary_label']} of "
         f"{mean_power:,.1f} across all operational periods. "
-        f"Overall {cfg['ratio_label']} against the reference "
-        f"averaged {mean_ratio:.1f}%."
+        f"{ratio_sentence}"
     )
 
     pattern = _notable_pattern(results, cfg)

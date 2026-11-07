@@ -4,9 +4,9 @@ export.py
 Owns Excel workbook assembly and file export.
 Receives the clean DataFrame, analysis results dict, chart image
 paths, run_id(s), schema, and output directory. Assembles an .xlsx
-workbook — seven base sheets, plus the measured power-curve sheet
-when the schema's registry entry enables it — and returns the
-output file path.
+workbook — seven base sheets, plus a plant-summary sheet and/or the
+measured power-curve sheet when the schema's registry entry enables
+them — and returns the output file path.
 
 Fully registry-driven: sheet headers, narrative text, and statistics
 labels come from config.SCHEMA_REGISTRY — adding a schema requires
@@ -106,6 +106,13 @@ def export(
     _write_efficiency_analysis(
         wb.create_sheet("Efficiency Analysis"), results["efficiency"], cfg
     )
+    # Plant-interval summary — only for schemas whose registry entry
+    # sets plant_col (solar_weather)
+    if "plant_summary" in results:
+        _write_plant_summary(
+            wb.create_sheet(config.PLANT_SUMMARY_SHEET_NAME),
+            results["plant_summary"], cfg,
+        )
     # Measured power curve sheet — only for schemas whose registry
     # entry enables it (wind); present between Efficiency and Charts
     if "power_curve" in results:
@@ -268,6 +275,28 @@ def _write_efficiency_analysis(
         cfg (dict): schema config from config.SCHEMA_REGISTRY
     """
     _write_dataframe(ws, efficiency_df, plain_headers=_efficiency_headers(cfg))
+
+
+def _write_plant_summary(
+    ws, plant_summary_df: pd.DataFrame, cfg: dict
+) -> None:
+    """
+    Write the plant-interval summary with shared plain-English headers.
+
+    Parameters:
+        ws: openpyxl Worksheet
+        plant_summary_df (pd.DataFrame): analyse's plant-level result
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+    """
+    display_df = plant_summary_df.reset_index(drop=True)
+    # openpyxl writes float NaN as a visible value; blank excluded
+    # intervals rather than inventing a number for them.
+    display_df = display_df.where(pd.notna(display_df), None)
+    _write_dataframe(
+        ws, display_df,
+        plain_headers=narrative.plant_summary_headers(cfg),
+        write_index=False,
+    )
 
 
 def _write_power_curve(
