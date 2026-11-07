@@ -60,9 +60,14 @@ def export_html(
     anomaly_html = _render_anomaly_summary(results)
     quality_html = _render_quality_note(run_ids)
     has_power_curve = "power_curve" in results
+    has_plant_summary = "plant_summary" in results
     power_curve_html = (
         _render_power_curve_table(results["power_curve"], cfg)
         if has_power_curve else ""
+    )
+    plant_summary_html = (
+        _render_plant_summary(results["plant_summary"], cfg)
+        if has_plant_summary else ""
     )
     images_b64 = [_encode_image(p) for p in chart_paths]
 
@@ -74,9 +79,9 @@ def export_html(
     ]
 
     html = _build_html(
-        _render_hero(cfg), _render_nav(has_power_curve), narrative_text,
-        stats_html, anomaly_html, quality_html, power_curve_html,
-        images_b64, chart_titles, schema,
+        _render_hero(cfg), _render_nav(has_power_curve, has_plant_summary),
+        narrative_text, stats_html, plant_summary_html, anomaly_html,
+        quality_html, power_curve_html, images_b64, chart_titles, schema,
     )
 
     base_filename = f"report_{date.today().isoformat()}.html"
@@ -209,7 +214,9 @@ def _render_stats_cards(
 
     def _fmt(label: str, value: float | int) -> str:
         if label == ratio_label:
-            return f"{value:.1f}%"
+            if cfg.get("ratio_is_percent", True):
+                return f"{value:.1f}%"
+            return f"{value:,.3f}"
         if isinstance(value, int) and value >= 1000:
             return f"{value:,}"
         return f"{value:g}"
@@ -244,16 +251,17 @@ def _render_hero(cfg: dict) -> str:
     )
 
 
-def _render_nav(has_power_curve: bool) -> str:
+def _render_nav(has_power_curve: bool, has_plant_summary: bool = False) -> str:
     """
     Build the sticky section navigation.
 
     Pure anchor links: no JavaScript keeps the report self-contained
-    and safe to open offline. The power-curve link only appears when
-    the run's schema provides that analysis.
+    and safe to open offline. Optional links appear only when the
+    run's schema produces those sections.
 
     Parameters:
         has_power_curve (bool): whether the power-curve section exists
+        has_plant_summary (bool): whether the plant summary exists
 
     Returns:
         str: sticky <nav> block
@@ -264,6 +272,8 @@ def _render_nav(has_power_curve: bool) -> str:
         ("Data Quality", "data-quality"),
         ("Charts", "charts"),
     ]
+    if has_plant_summary:
+        links.insert(1, (config.PLANT_SUMMARY_SHEET_NAME, "plant-summary"))
     if has_power_curve:
         links.insert(3, ("Power Curve", "power-curve"))
     items = "".join(
@@ -293,6 +303,57 @@ def _render_anomaly_summary(results: dict) -> str:
     ]
     return (
         f"<p>{len(anomalies)} anomalies flagged: {', '.join(parts)}.</p>"
+    )
+
+
+def _render_plant_summary(plant_df: pd.DataFrame, cfg: dict) -> str:
+    """
+    Build the plant-interval summary table.
+
+    Headers come from narrative.plant_summary_headers — one definition
+    shared with the Excel sheet. Excluded intervals have a blank ratio,
+    never a filled or invented value.
+
+    Parameters:
+        plant_df (pd.DataFrame): analyse's plant-level result
+        cfg (dict): schema config from config.SCHEMA_REGISTRY
+
+    Returns:
+        str: complete HTML section, or "" when no rows exist
+    """
+    if plant_df.empty:
+        return ""
+
+    headers = narrative.plant_summary_headers(cfg)
+    columns = list(headers)
+    header_cells = "".join(
+        f"<th>{headers[col]}</th>" for col in columns
+    )
+
+    rows_html = ""
+    for _, row in plant_df.iterrows():
+        cells = []
+        for col in columns:
+            value = row[col]
+            if pd.isna(value):
+                text = ""
+            elif isinstance(value, pd.Timestamp):
+                text = value.strftime("%Y-%m-%d %H:%M")
+            elif col == cfg["ratio_name"]:
+                text = f"{float(value):,.3f}"
+            elif isinstance(value, float):
+                text = f"{value:,.2f}"
+            else:
+                text = str(value)
+            cells.append(f"<td>{text}</td>")
+        rows_html += "<tr>" + "".join(cells) + "</tr>"
+
+    return (
+        f'<h2 id="plant-summary">{config.PLANT_SUMMARY_SHEET_NAME}</h2>'
+        '<div class="table-wrap">'
+        f"<table><thead><tr>{header_cells}</tr></thead>"
+        f"<tbody>{rows_html}</tbody></table>"
+        "</div>"
     )
 
 
@@ -343,6 +404,7 @@ def _build_html(
     nav_html: str,
     narrative_text: str,
     stats_cards_html: str,
+    plant_summary_html: str,
     anomaly_html: str,
     quality_html: str,
     power_curve_html: str,
@@ -358,6 +420,8 @@ def _build_html(
         nav_html (str): sticky section navigation block
         narrative_text (str): narrative paragraph
         stats_cards_html (str): KPI card band from _render_stats_cards
+        plant_summary_html (str): plant-interval table, or "" when the
+            schema produces no plant summary
         anomaly_html (str): anomaly summary HTML block
         quality_html (str): data quality note HTML block
         power_curve_html (str): measured power curve section, or ""
@@ -455,6 +519,8 @@ def _build_html(
 
   <h2 id="headline-statistics">Headline Statistics</h2>
   {stats_cards_html}
+
+  {plant_summary_html}
 
   <h2 id="anomaly-summary">Anomaly Summary</h2>
   {anomaly_html}

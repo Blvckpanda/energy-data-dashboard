@@ -14,7 +14,9 @@ REQUIRED_KEYS = {
 
 
 def test_all_schemas_present():
-    assert set(config.SCHEMA_REGISTRY.keys()) == {"wind", "solar", "hydro"}
+    assert set(config.SCHEMA_REGISTRY.keys()) == {
+        "wind", "solar", "solar_weather", "hydro",
+    }
 
 
 def test_every_schema_has_all_required_keys():
@@ -26,7 +28,9 @@ def test_every_schema_has_all_required_keys():
 def test_display_names_cover_all_required_columns():
     """Every required CSV column has a plain-English display name."""
     for name, cfg in config.SCHEMA_REGISTRY.items():
-        for col in cfg["required_columns"]:
+        required = list(cfg["required_columns"])
+        required += list(cfg.get("weather_required_columns", []))
+        for col in required:
             assert col in cfg["display_names"], (
                 f"{name}: no display name for required column {col!r}"
             )

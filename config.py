@@ -78,6 +78,27 @@ SOLAR_MEDIAN_FILL_COLUMNS = [COL_DC_POWER, COL_DAILY_YIELD, COL_TOTAL_YIELD]
 CONVERSION_MIN_DC = 0   # exclusive — DC_POWER > 0 required (daylight)
 CONVERSION_MIN_AC = 0   # exclusive — AC_POWER > 0 required
 
+# ── Solar Weather Column Names ──────────────────────────────────────
+COL_IRRADIATION         = "IRRADIATION"
+COL_AMBIENT_TEMPERATURE = "AMBIENT_TEMPERATURE"
+COL_MODULE_TEMPERATURE  = "MODULE_TEMPERATURE"
+
+# The weather file is joined to generation on plant and timestamp only:
+# generation SOURCE_KEY values are inverter IDs, weather SOURCE_KEY
+# values are sensor IDs, so joining on SOURCE_KEY would match nothing.
+SOLAR_WEATHER_CRITICAL_COLUMNS = [COL_SOLAR_DATETIME, COL_AC_POWER]
+SOLAR_WEATHER_MEDIAN_FILL_COLUMNS = [
+    COL_DC_POWER, COL_DAILY_YIELD, COL_TOTAL_YIELD,
+]
+SOLAR_WEATHER_MEASURE_COLUMNS = [
+    COL_IRRADIATION, COL_AMBIENT_TEMPERATURE, COL_MODULE_TEMPERATURE,
+]
+
+# Night, dawn and dusk rows are excluded from the normalized output so
+# a near-zero denominator cannot dominate the mean. Named here rather
+# than buried in analyse.py.
+IRRADIANCE_MIN_FOR_RATIO = 50.0  # W/m2, exclusive
+
 # ── Hydro SCADA Column Names ────────────────────────────────────────
 COL_HYDRO_DATETIME          = "Timestamp"
 COL_HYDRO_FLOW              = "Water_Flow_Rate (m3/s)"
@@ -214,6 +235,64 @@ SCHEMA_REGISTRY = {
             "value_col":  COL_AC_POWER,
         },
     },
+    "solar_weather": {
+        "required_columns": [
+            COL_SOLAR_DATETIME, COL_PLANT_ID, COL_SOURCE_KEY,
+            COL_DC_POWER, COL_AC_POWER, COL_DAILY_YIELD, COL_TOTAL_YIELD,
+        ],
+        "weather_required_columns": [
+            COL_SOLAR_DATETIME, COL_PLANT_ID, COL_SOURCE_KEY,
+            COL_AMBIENT_TEMPERATURE, COL_MODULE_TEMPERATURE,
+            COL_IRRADIATION,
+        ],
+        "weather_measure_columns": SOLAR_WEATHER_MEASURE_COLUMNS,
+        "datetime_col":         COL_SOLAR_DATETIME,
+        "date_format":          SOLAR_DATE_FORMAT,
+        "critical_columns":     SOLAR_WEATHER_CRITICAL_COLUMNS,
+        "median_fill_columns":  SOLAR_WEATHER_MEDIAN_FILL_COLUMNS,
+        "plant_col":            COL_PLANT_ID,
+        "asset_id_col":         COL_SOURCE_KEY,
+        "primary_power_col":    COL_AC_POWER,
+        "secondary_col":        COL_DC_POWER,
+        "reference_col":        COL_IRRADIATION,
+        "ratio_name":           "irradiance_normalized_output",
+        "ratio_is_percent":     False,
+        "min_primary":          CONVERSION_MIN_AC,
+        "min_reference":        IRRADIANCE_MIN_FOR_RATIO,
+        "primary_label":        "AC Power (kW)",
+        "secondary_label":      "DC Power (kW)",
+        "ratio_label":          "Irradiance-Normalized Output (kW per W/m²)",
+        "asset_label":          "Solar Plant",
+        "display_names": {
+            COL_SOLAR_DATETIME:    "Timestamp",
+            COL_PLANT_ID:          "Plant ID",
+            COL_SOURCE_KEY:        "Inverter ID",
+            COL_DC_POWER:          "DC Power (kW)",
+            COL_AC_POWER:          "AC Power (kW)",
+            COL_DAILY_YIELD:       "Daily Yield (kWh)",
+            COL_TOTAL_YIELD:       "Total Yield (kWh)",
+            COL_IRRADIATION:       "Irradiance (W/m²)",
+            COL_AMBIENT_TEMPERATURE: "Ambient Temperature (°C)",
+            COL_MODULE_TEMPERATURE:  "Module Temperature (°C)",
+        },
+        "interval_minutes":     15,
+        "hours_from_plant_intervals": True,
+        # Absent or None means no capacity-normalized metric is produced
+        # and no standard-based efficiency claim is made. Set a
+        # documented value in kW to enable the gated performance ratio.
+        "nameplate_kw":         None,
+        "methodology_note":     "The irradiance-normalized output divides plant AC power "
+                                "by concurrent plane-of-array irradiance, in kW per W/m2. "
+                                "It is not capacity-normalized: the source documents no "
+                                "nameplate capacity, so this report draws no standard-based "
+                                "efficiency conclusion.",
+        "scatter_reference":    "identity",
+        "distribution": {
+            "kind":       "group_mean",
+            "group_col":  COL_SOURCE_KEY,
+            "value_col":  COL_AC_POWER,
+        },
+    },
     "hydro": {
         "required_columns": [
             COL_HYDRO_DATETIME, COL_HYDRO_FLOW,
@@ -259,3 +338,7 @@ ANOMALY_ROLLING_DROP_PCT = 0.20  # rolling mean drop % to flag
 # measured power curve (schemas whose registry entry sets
 # power_curve_bin_width)
 POWER_CURVE_SHEET_NAME = "Power Curve (IEC 61400-12-1 style)"
+
+# Sheet and HTML section presenting plant-interval aggregation for
+# schemas whose registry entry sets plant_col (solar_weather)
+PLANT_SUMMARY_SHEET_NAME = "Plant Summary"

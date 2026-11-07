@@ -1,6 +1,10 @@
 # Solar Weather Ingest Plan (true IEC 61724 PR)
 
-Status: proposed, not implemented.
+Status: implemented 2026-11-07. Option B is active: the report
+reports irradiance-normalized output and `nameplate_kw` remains
+`None`, so no capacity-normalized claim is made. The gated
+performance-ratio calculation is present and covered by a test that
+sets a documented nameplate.
 Date: 2026-11-07.
 
 This plan unblocks the one deliberately deferred solar claim: a true
