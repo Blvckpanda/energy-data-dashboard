@@ -11,7 +11,7 @@
 | HTML export  | base64 (stdlib)      | Self-contained single-file report generation   |
 | CLI          | argparse (stdlib)    | Argument parsing — no extra dependency         |
 | Linting      | ruff (E/F/W/I)       | CI lint gate, same command runs locally        |
-| Testing      | pytest               | 111-test suite, fully synthetic data           |
+| Testing      | pytest               | 112-test suite, fully synthetic data           |
 | Environment  | venv / Docker        | Dependency isolation and reproducibility       |
 
 ## System Boundaries
@@ -154,9 +154,15 @@ plant-level: `DATE_TIME`, `PLANT_ID`, `SOURCE_KEY` (sensor), and the
 three weather measures. The join is on `(PLANT_ID, DATE_TIME)` only,
 never `SOURCE_KEY`. Generation is summed per plant interval, weather
 is averaged, and inverter counts expose under-populated intervals.
-`IRRADIATION` below 50 W/m² (named `IRRADIANCE_MIN_FOR_RATIO`) is
-excluded from the metric. `nameplate_kw` is `None`, so the report
-reports Irradiance-Normalized Output and makes no IEC 61724 claim.
+
+The real files mix timestamp layouts: Plant 1 generation is
+day-first, while Plant 2 generation and both weather files are ISO.
+Each file is parsed completely under one known format. Sensor
+`IRRADIATION` is recorded in kW/m² (0 to about 1.22) and is converted
+to W/m² using `irradiance_scale_to_wm2`, so the 50 W/m² threshold
+(named `IRRADIANCE_MIN_FOR_RATIO`) and the kW per W/m² label are
+truthful. `nameplate_kw` is `None`, so the report reports
+Irradiance-Normalized Output and makes no IEC 61724 claim.
 
 ### Hydro (`COL_HYDRO_*` constants)
 

@@ -23,7 +23,13 @@ Generation Data, two plants in India, 34 days, 15-minute intervals):
   `AC_POWER` (kW), `DAILY_YIELD`, `TOTAL_YIELD`.
 - Weather files, plant level, a single sensor array:
   `DATE_TIME`, `PLANT_ID`, `SOURCE_KEY`, `AMBIENT_TEMPERATURE`,
-  `MODULE_TEMPERATURE`, `IRRADIATION` (W/m2 for the interval).
+  `MODULE_TEMPERATURE`, `IRRADIATION` (recorded on a 0 to about 1.22
+  scale, which is kW/m2; the implemented ingest converts it to W/m2).
+
+Timestamp layouts are mixed in the real files: Plant 1 generation is
+`%d-%m-%Y %H:%M`, while Plant 2 generation and both weather files are
+`%Y-%m-%d %H:%M:%S`. The ingest accepts either layout per file but
+requires the whole file to parse under one of them.
 
 **The dataset documents no nameplate capacity, no module orientation,
 and no sensor tilt.** That matters because IEC 61724 PR is

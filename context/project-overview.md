@@ -37,7 +37,7 @@ full run lineage.
 5. Keep every schema-specific behaviour registry-driven — proven by
    the third schema (hydro) requiring zero pipeline-module changes.
 6. Serve as a portfolio artefact with a green CI gate (ruff lint +
-   111-test pytest suite across Python 3.10/3.11) and a reproducible
+   112-test pytest suite across Python 3.10/3.11) and a reproducible
    Docker run.
 
 ## Core User Flow
@@ -132,7 +132,7 @@ and a distribution spec (`bins` or `group_mean`).
 - Anomaly detection (threshold + rolling window) with report sheets
 - Matplotlib/Seaborn chart generation (four charts per run)
 - Excel + self-contained HTML export
-- pytest suite (111 tests, fully synthetic data) with ruff gate in CI
+- pytest suite (112 tests, fully synthetic data) with ruff gate in CI
 - Docker packaging; `context/` reference documents
 
 ### Out of Scope

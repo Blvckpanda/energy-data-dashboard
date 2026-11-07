@@ -198,6 +198,7 @@ def merge_solar_weather(
 
     _validate_plants(generation, weather, plant_col)
     weather = _coerce_weather_measures(weather, measure_cols)
+    weather = _convert_irradiance_units(weather, cfg)
     weather = _handle_negative_irradiance(weather, cfg)
     weather = _aggregate_weather(weather, cfg)
 
@@ -241,19 +242,43 @@ def merge_solar_weather(
 def _parse_timestamps(
     df: pd.DataFrame, cfg: dict, role: str
 ) -> pd.DataFrame:
-    """Parse one input file's timestamps, rejecting every bad row."""
+    """
+    Parse one input file's timestamps, rejecting every bad row.
+
+    The real dataset ships two timestamp layouts: Plant 1 generation
+    is day-first, while Plant 2 generation and both weather files are
+    ISO. Each file must parse completely under one known format; a
+    file that mixes layouts, or uses an unknown one, raises instead of
+    being coerced row by row.
+    """
     datetime_col = cfg["datetime_col"]
-    parsed = pd.to_datetime(
-        df[datetime_col], format=cfg["date_format"], errors="coerce"
+    formats = [cfg["date_format"]] + list(
+        cfg.get("alternate_date_formats", [])
     )
-    bad = parsed.isna()
-    if bad.any():
-        examples = df.loc[bad, datetime_col].astype(str).head(3).tolist()
+
+    parsed = None
+    used_format = None
+    for candidate_format in formats:
+        candidate = pd.to_datetime(
+            df[datetime_col], format=candidate_format, errors="coerce"
+        )
+        if candidate.notna().all():
+            parsed = candidate
+            used_format = candidate_format
+            break
+
+    if parsed is None:
+        examples = df[datetime_col].astype(str).head(3).tolist()
         raise SystemExit(
-            f"Error: {role} file has {int(bad.sum()):,} row(s) whose "
-            f"'{datetime_col}' values do not match "
-            f"'{cfg['date_format']}'. Examples: {examples}. "
+            f"Error: {role} file has timestamps that match none of the "
+            f"known formats {formats}. Examples: {examples}. "
             "Fix these rows and rerun; they are not silently dropped."
+        )
+
+    if used_format != cfg["date_format"]:
+        print(
+            f"[MERGE] {role} timestamps parsed with alternate format "
+            f"'{used_format}'"
         )
 
     parsed_df = df.copy()
@@ -313,6 +338,31 @@ def _coerce_weather_measures(
                 f"in {col} set to missing and excluded from the metric"
             )
     return weather
+
+
+def _convert_irradiance_units(
+    weather: pd.DataFrame, cfg: dict
+) -> pd.DataFrame:
+    """
+    Convert recorded irradiance to W/m2 using the registry's scale.
+
+    The Kaggle sensor files record values between 0 and about 1.22,
+    which is kW/m2. Without this conversion the 50 W/m2 threshold
+    would reject every daylight row. The scale is explicit in the
+    registry and printed, never inferred from the data at runtime.
+    """
+    scale = float(cfg.get("irradiance_scale_to_wm2", 1.0))
+    if scale == 1.0:
+        return weather
+
+    irradiation_col = cfg["reference_col"]
+    converted = weather.copy()
+    converted[irradiation_col] = converted[irradiation_col] * scale
+    print(
+        f"[MERGE] Irradiance converted to W/m2 with x{scale:g} "
+        "(source records kW/m2)"
+    )
+    return converted
 
 
 def _handle_negative_irradiance(
