@@ -99,6 +99,12 @@ SOLAR_WEATHER_MEASURE_COLUMNS = [
 # than buried in analyse.py.
 IRRADIANCE_MIN_FOR_RATIO = 50.0  # W/m2, exclusive
 
+# The Kaggle sensor files record IRRADIATION on a 0 to about 1.22
+# scale, which is kW/m2 (a clear-sky reading near 1 kW/m2). Convert to
+# W/m2 so the threshold above and the report's unit label describe
+# the data truthfully. A source already in W/m2 sets this to 1.0.
+SOLAR_WEATHER_IRRADIANCE_SCALE_TO_WM2 = 1000.0
+
 # ── Hydro SCADA Column Names ────────────────────────────────────────
 COL_HYDRO_DATETIME          = "Timestamp"
 COL_HYDRO_FLOW              = "Water_Flow_Rate (m3/s)"
@@ -248,6 +254,10 @@ SCHEMA_REGISTRY = {
         "weather_measure_columns": SOLAR_WEATHER_MEASURE_COLUMNS,
         "datetime_col":         COL_SOLAR_DATETIME,
         "date_format":          SOLAR_DATE_FORMAT,
+        # The real files are mixed: Plant 1 generation is day-first,
+        # while Plant 2 generation and both weather files are ISO.
+        "alternate_date_formats": ["%Y-%m-%d %H:%M:%S"],
+        "irradiance_scale_to_wm2": SOLAR_WEATHER_IRRADIANCE_SCALE_TO_WM2,
         "critical_columns":     SOLAR_WEATHER_CRITICAL_COLUMNS,
         "median_fill_columns":  SOLAR_WEATHER_MEDIAN_FILL_COLUMNS,
         "plant_col":            COL_PLANT_ID,

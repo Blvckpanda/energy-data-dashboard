@@ -150,9 +150,18 @@ weather sensor file:
 | `DATE_TIME` | datetime |
 | `PLANT_ID` | string |
 | `SOURCE_KEY` | string (sensor ID) |
-| `IRRADIATION` | float (W/m²) |
+| `IRRADIATION` | float (recorded kW/m², converted to W/m²) |
 | `AMBIENT_TEMPERATURE` | float (°C) |
 | `MODULE_TEMPERATURE` | float (°C) |
+
+The real files are mixed: Plant 1 generation timestamps are
+day-first (`15-05-2020 00:00`), while Plant 2 generation and both
+weather files are ISO (`2020-05-15 00:00:00`). Each file must parse
+completely under one known layout. The sensor files record
+`IRRADIATION` on a 0 to about 1.22 scale, which is kW/m²; the ingest
+converts it to W/m² with the explicit `irradiance_scale_to_wm2`
+registry value, so the 50 W/m² threshold and the report's unit label
+are truthful. A source already in W/m² sets that value to `1.0`.
 
 The two files are joined on `(PLANT_ID, DATE_TIME)` only. Generation
 `SOURCE_KEY` values are inverter IDs and weather `SOURCE_KEY` values

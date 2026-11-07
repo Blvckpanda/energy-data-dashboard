@@ -33,9 +33,10 @@ def frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     generation_rows = []
     weather_rows = []
 
+    # Irradiance is supplied in the dataset's recorded kW/m2 scale.
     plant_specs = (
-        (PLANT_ONE, 100.0, 110.0, 600.0),
-        (PLANT_TWO, 80.0, 90.0, 400.0),
+        (PLANT_ONE, 100.0, 110.0, 0.6),
+        (PLANT_TWO, 80.0, 90.0, 0.4),
     )
     for plant_id, first_base, second_base, irradiance in plant_specs:
         for index, timestamp in enumerate(times):
@@ -45,7 +46,7 @@ def frames() -> tuple[pd.DataFrame, pd.DataFrame]:
                 ),
                 config.COL_PLANT_ID: plant_id,
                 config.COL_SOURCE_KEY: "SENSOR1",
-                config.COL_IRRADIATION: irradiance + index * 50.0,
+                config.COL_IRRADIATION: irradiance + index * 0.05,
                 config.COL_AMBIENT_TEMPERATURE: 25.0 + index,
                 config.COL_MODULE_TEMPERATURE: 35.0 + index,
             })
@@ -91,6 +92,8 @@ def test_registry_contract_declares_weather_and_no_nameplate():
     assert cfg["ratio_is_percent"] is False
     assert cfg["nameplate_kw"] is None
     assert cfg["min_reference"] == config.IRRADIANCE_MIN_FOR_RATIO
+    assert cfg["irradiance_scale_to_wm2"] == 1000.0
+    assert "%Y-%m-%d %H:%M:%S" in cfg["alternate_date_formats"]
     for column in cfg["weather_required_columns"]:
         assert column in cfg["display_names"]
     assert "IEC" not in cfg["methodology_note"]
@@ -124,16 +127,36 @@ def test_merge_joins_weather_by_plant_and_interval(frames):
         )
     ].iloc[0]
 
-    # Each plant receives its own sensor reading, never the other's.
+    # Each plant receives its own sensor reading, never the other's,
+    # converted from recorded kW/m2 to W/m2.
     assert first[config.COL_IRRADIATION] == 600.0
     assert second_plant[config.COL_IRRADIATION] == 400.0
+
+
+def test_merge_accepts_iso_timestamps(frames):
+    """Plant 2 generation and both weather files use ISO timestamps."""
+    generation, weather = frames
+    iso_format = "%Y-%m-%d %H:%M:%S"
+    generation[config.COL_SOLAR_DATETIME] = pd.to_datetime(
+        generation[config.COL_SOLAR_DATETIME],
+        format=config.SOLAR_DATE_FORMAT,
+    ).dt.strftime(iso_format)
+    weather[config.COL_SOLAR_DATETIME] = pd.to_datetime(
+        weather[config.COL_SOLAR_DATETIME],
+        format=config.SOLAR_DATE_FORMAT,
+    ).dt.strftime(iso_format)
+
+    merged = ingest.merge_solar_weather(generation, weather)
+
+    assert len(merged) == len(generation)
+    assert merged[config.COL_IRRADIATION].notna().all()
 
 
 def test_merge_averages_multiple_sensor_rows_for_one_interval(frames):
     generation, weather = frames
     extra = weather.iloc[[0]].copy()
     extra[config.COL_SOURCE_KEY] = "SENSOR2"
-    extra[config.COL_IRRADIATION] = 700.0
+    extra[config.COL_IRRADIATION] = 0.7
     weather = pd.concat([weather, extra], ignore_index=True)
 
     merged = ingest.merge_solar_weather(generation, weather)
@@ -155,7 +178,7 @@ def test_merge_rejects_bad_timestamps(frames):
 
     message = str(exc_info.value)
     assert "generation file" in message
-    assert "do not match" in message
+    assert "match none of the known formats" in message
     assert "not silently dropped" in message
 
 
@@ -271,7 +294,7 @@ def test_analysis_reports_per_inverter_and_plant_metrics(frames):
 
 def test_low_irradiance_intervals_are_excluded_not_filled(frames):
     generation, weather = frames
-    weather.loc[0, config.COL_IRRADIATION] = 20.0
+    weather.loc[0, config.COL_IRRADIATION] = 0.02  # 20 W/m2 after conversion
 
     clean_df = _clean_merged(generation, weather)
     results = _results(clean_df)
@@ -283,7 +306,7 @@ def test_low_irradiance_intervals_are_excluded_not_filled(frames):
 
 def test_negative_irradiance_is_excluded_from_the_metric(frames):
     generation, weather = frames
-    weather.loc[0, config.COL_IRRADIATION] = -10.0
+    weather.loc[0, config.COL_IRRADIATION] = -0.01
 
     clean_df = _clean_merged(generation, weather)
     results = _results(clean_df)
