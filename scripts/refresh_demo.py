@@ -45,6 +45,15 @@ import config
 # freshness job greps for exactly this pattern — change both together.
 STAMP_FORMAT = "<!-- demo-sha: {sha} -->"
 STAMP_RE = r"<!-- demo-sha: [0-9a-f]{40} -->"
+# Both provenance comments, removed together on restamp. They must be
+# two complete adjacent comments, never one comment containing the
+# other: an HTML comment cannot nest, so the parser would close at
+# the inner "-->" and leak the rest as visible text at the top of
+# the rendered report.
+PROVENANCE_RE = (
+    r"<!-- Generated on [^\n]*? by scripts/refresh_demo\.py -->\n?"
+    r"<!-- demo-sha: [0-9a-f]{40} -->\n?"
+)
 ANCHOR = '<meta charset="UTF-8">'
 
 
@@ -205,7 +214,10 @@ def stamp_html(html: str, generated_on: str, sha: str) -> str:
     Assumptions:
         - html is the pipeline's own HTML, which contains ANCHOR exactly
     """
-    without_old = re.sub(STAMP_RE + r"\n?", "", html)
+    without_old = re.sub(PROVENANCE_RE, "", html)
+    # Legacy single-comment stamps are removed too, so restamping an
+    # already-committed demo never stacks or leaves a stray terminator.
+    without_old = re.sub(STAMP_RE + r"\n?", "", without_old)
     missing_anchor = ANCHOR not in without_old
     if missing_anchor:
         raise SystemExit(
@@ -213,8 +225,8 @@ def stamp_html(html: str, generated_on: str, sha: str) -> str:
             f"{ANCHOR!r} marker to anchor the stamp."
         )
     stamp = (
-        f"<!-- Generated on {generated_on} by scripts/refresh_demo.py\n"
-        f"     {STAMP_FORMAT.format(sha=sha)} -->\n"
+        f"<!-- Generated on {generated_on} by scripts/refresh_demo.py -->\n"
+        f"{STAMP_FORMAT.format(sha=sha)}\n"
     )
     return without_old.replace(ANCHOR, ANCHOR + "\n" + stamp, 1)
 

@@ -42,6 +42,20 @@ class TestStampHtml:
         assert "demo-sha: " + "b" * 40 in second
         assert "demo-sha: " + "a" * 40 not in second
 
+    def test_stamp_is_two_well_formed_comments(self):
+        """The provenance block must not nest one comment in another:
+        the parser closes at the inner '-->' and leaks the remainder
+        as visible text above the report."""
+        html = '<!DOCTYPE html><meta charset="UTF-8"><body></body>'
+        stamped = rd.stamp_html(
+            html, generated_on="2026-11-03", sha="d" * 40
+        )
+
+        lines = stamped.split(rd.ANCHOR, 1)[1].lstrip("\n").splitlines()
+        assert lines[0].startswith("<!-- Generated on 2026-11-03")
+        assert lines[0].endswith("-->") and "demo-sha" not in lines[0]
+        assert lines[1] == "<!-- demo-sha: " + "d" * 40 + " -->"
+
     def test_missing_anchor_fails_loudly(self):
         with pytest.raises(SystemExit):
             rd.stamp_html("<p>no anchor</p>",
